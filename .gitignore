@@ -32,7 +32,5 @@ out/
 
 # Project outputs
 outputs/
-*.png
-*.svg
 tiktok_shots/
 tiktok_*_results.json

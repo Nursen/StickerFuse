@@ -30,6 +30,20 @@ class Subtopic(BaseModel):
         default_factory=list,
         description="Example posts, search queries, or data points that evidence the trend",
     )
+    # Optional hard metrics from TrendSignal (populated when trend_scorer data is available)
+    spike_score: float | None = Field(
+        default=None, description="How far above baseline (from trend_scorer)"
+    )
+    engagement_velocity: float | None = Field(
+        default=None, description="Engagement per hour (from trend_scorer)"
+    )
+    post_count: int | None = Field(
+        default=None, description="Number of posts backing this trend"
+    )
+    evidence_urls: list[str] = Field(
+        default_factory=list,
+        description="URLs to actual posts/pages backing this trend",
+    )
 
 
 class SubtopicResult(BaseModel):

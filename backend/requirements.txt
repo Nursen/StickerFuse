@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pydantic-ai-slim[google]
+python-dotenv
+praw
+pytrends

@@ -1,49 +1,36 @@
-"""Mine trending posts from Reddit using PRAW (official Reddit API).
+"""Mine trending posts from Reddit using public JSON endpoints.
 
-Fetches hot posts from specified subreddits, extracts titles, scores, comment counts,
-and top comments — the raw signal the subtopic agent uses to identify trends.
-
-Setup:
-  1. Create a Reddit app at https://www.reddit.com/prefs/apps (select "script")
-  2. Add credentials to .env (see .env.example)
+Reddit discontinued self-service API keys in Nov 2025. This miner uses
+the public .json endpoints (append .json to any Reddit URL) which require
+no credentials. Rate limit is ~10 requests/minute.
 
 Usage:
   python -m miners.reddit_miner --subreddits taylorswift nba --limit 20
-  python -m miners.reddit_miner --subreddits memes --time-filter week -o output/reddit.json
+  python -m miners.reddit_miner --subreddits memes --sort top --time-filter week -o output/reddit.json
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
-from dotenv import load_dotenv
+_USER_AGENT = "StickerFuse/0.1 (educational project)"
+_REQUEST_DELAY = 2.0  # seconds between requests to stay under rate limit
 
-load_dotenv()
 
-
-def _build_reddit():
-    """Build a PRAW Reddit instance from .env credentials."""
-    import praw
-
-    client_id = os.getenv("REDDIT_CLIENT_ID")
-    client_secret = os.getenv("REDDIT_CLIENT_SECRET")
-    user_agent = os.getenv("REDDIT_USER_AGENT", "StickerFuse/0.1")
-
-    if not client_id or not client_secret:
-        raise RuntimeError(
-            "Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in .env. "
-            "Create a Reddit app at https://www.reddit.com/prefs/apps"
-        )
-
-    return praw.Reddit(
-        client_id=client_id,
-        client_secret=client_secret,
-        user_agent=user_agent,
-    )
+def _fetch_json(url: str) -> dict:
+    """Fetch JSON from a Reddit .json endpoint."""
+    req = Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as e:
+        raise RuntimeError(f"Reddit returned {e.code} for {url}: {e.reason}") from e
 
 
 def mine_subreddit(
@@ -52,66 +39,63 @@ def mine_subreddit(
     limit: int = 25,
     sort: str = "hot",
     time_filter: str = "week",
-    include_comments: bool = True,
-    max_comments: int = 5,
 ) -> dict:
-    """Fetch trending posts from a subreddit.
+    """Fetch trending posts from a subreddit via public JSON endpoint.
 
     Args:
         subreddit_name: Name of the subreddit (without r/).
-        limit: Number of posts to fetch.
+        limit: Number of posts to fetch (max 100 per request).
         sort: Sort method — "hot", "top", "rising", "new".
         time_filter: Time filter for "top" sort — "hour", "day", "week", "month", "year", "all".
-        include_comments: Whether to fetch top comments per post.
-        max_comments: Max comments to fetch per post.
 
     Returns:
         Dict with subreddit info and posts.
     """
-    reddit = _build_reddit()
-    subreddit = reddit.subreddit(subreddit_name)
+    limit = min(limit, 100)
 
-    if sort == "hot":
-        submissions = subreddit.hot(limit=limit)
-    elif sort == "top":
-        submissions = subreddit.top(time_filter=time_filter, limit=limit)
-    elif sort == "rising":
-        submissions = subreddit.rising(limit=limit)
-    elif sort == "new":
-        submissions = subreddit.new(limit=limit)
+    if sort == "top":
+        url = f"https://www.reddit.com/r/{subreddit_name}/top.json?t={time_filter}&limit={limit}"
     else:
-        submissions = subreddit.hot(limit=limit)
+        url = f"https://www.reddit.com/r/{subreddit_name}/{sort}.json?limit={limit}"
+
+    data = _fetch_json(url)
+    children = data.get("data", {}).get("children", [])
 
     posts = []
-    for submission in submissions:
-        if submission.stickied:
+    for child in children:
+        d = child.get("data", {})
+
+        if d.get("stickied"):
             continue
 
+        created_dt = datetime.fromtimestamp(
+            d.get("created_utc", 0), tz=timezone.utc
+        )
+        created_iso = created_dt.isoformat()
+
+        # Computed engagement fields
+        hours_ago = max(
+            (datetime.now(tz=timezone.utc) - created_dt).total_seconds() / 3600,
+            0.1,  # floor to avoid division by zero
+        )
+        score = d.get("score", 0)
+        num_comments = d.get("num_comments", 0)
+
         post = {
-            "title": submission.title,
-            "score": submission.score,
-            "upvote_ratio": submission.upvote_ratio,
-            "num_comments": submission.num_comments,
-            "url": f"https://reddit.com{submission.permalink}",
-            "created_utc": datetime.fromtimestamp(
-                submission.created_utc, tz=timezone.utc
-            ).isoformat(),
-            "selftext_preview": (submission.selftext or "")[:300],
-            "link_flair_text": submission.link_flair_text,
-            "is_self": submission.is_self,
+            "title": d.get("title", ""),
+            "score": score,
+            "upvote_ratio": d.get("upvote_ratio", 0),
+            "num_comments": num_comments,
+            "url": f"https://reddit.com{d.get('permalink', '')}",
+            "created_utc": created_iso,
+            "selftext_preview": (d.get("selftext") or "")[:300],
+            "link_flair_text": d.get("link_flair_text"),
+            "is_self": d.get("is_self", False),
+            # Computed metrics
+            "hours_ago": round(hours_ago, 2),
+            "engagement_velocity": round(score / hours_ago, 2),
+            "comments_per_hour": round(num_comments / hours_ago, 2),
         }
-
-        if include_comments and submission.num_comments > 0:
-            submission.comment_sort = "top"
-            submission.comments.replace_more(limit=0)
-            top_comments = []
-            for comment in submission.comments[:max_comments]:
-                top_comments.append({
-                    "body": comment.body[:200],
-                    "score": comment.score,
-                })
-            post["top_comments"] = top_comments
-
         posts.append(post)
 
     return {
@@ -130,9 +114,12 @@ def mine_multiple_subreddits(
 ) -> dict:
     """Mine multiple subreddits and combine results."""
     results = []
-    for name in subreddit_names:
+    for i, name in enumerate(subreddit_names):
         print(f"Mining r/{name}...", file=sys.stderr)
         results.append(mine_subreddit(name, **kwargs))
+        # Rate limit: wait between requests (skip after last one)
+        if i < len(subreddit_names) - 1:
+            time.sleep(_REQUEST_DELAY)
 
     return {
         "source": "reddit",
@@ -143,12 +130,12 @@ def mine_multiple_subreddits(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Mine trending Reddit posts")
+    parser = argparse.ArgumentParser(description="Mine trending Reddit posts (no API key needed)")
     parser.add_argument(
         "--subreddits", nargs="+", required=True,
         help="Subreddit names to mine (e.g. taylorswift nba memes)",
     )
-    parser.add_argument("--limit", type=int, default=25, help="Posts per subreddit (default: 25)")
+    parser.add_argument("--limit", type=int, default=25, help="Posts per subreddit (default: 25, max: 100)")
     parser.add_argument(
         "--sort", choices=["hot", "top", "rising", "new"], default="hot",
         help="Sort method (default: hot)",
@@ -157,7 +144,6 @@ def main() -> None:
         "--time-filter", choices=["hour", "day", "week", "month", "year", "all"],
         default="week", help="Time filter for 'top' sort (default: week)",
     )
-    parser.add_argument("--no-comments", action="store_true", help="Skip fetching comments")
     parser.add_argument("-o", "--out", type=Path, default=None, help="Write JSON output here")
     args = parser.parse_args()
 
@@ -166,7 +152,6 @@ def main() -> None:
         limit=args.limit,
         sort=args.sort,
         time_filter=args.time_filter,
-        include_comments=not args.no_comments,
     )
 
     text = json.dumps(result, indent=2, ensure_ascii=False)

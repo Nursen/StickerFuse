@@ -1,5 +1,9 @@
 pydantic>=2.0
 pydantic-ai-slim[google]>=0.0.14
 python-dotenv>=1.0.0
-praw>=7.7.0
 pytrends>=4.9.0
+fastapi>=0.110.0
+uvicorn>=0.27.0
+playwright>=1.40.0
+vaderSentiment>=3.3.2
+tiktok-trends-mcp>=0.1.0
