@@ -111,7 +111,7 @@ function StickerStudio({ onNavigateTrends }) {
     if (loadingImage) return
     setSelectedConcept(concept)
     setLoadingImage(true)
-    const prompt = concept.prompt || concept.description || concept.design_prompt || JSON.stringify(concept)
+    const prompt = concept.visual_description || concept.concept_description || concept.prompt || concept.description || JSON.stringify(concept)
     const result = await sendChatMessage(`generate a sticker image for: ${prompt}`)
     if (result && result.toolResults) {
       const images = extractStickerImage(result.toolResults)
@@ -209,7 +209,7 @@ function StickerStudio({ onNavigateTrends }) {
             {stickerIdeas.map((concept, i) => {
               const style = concept.art_style || concept.style || ''
               const layout = concept.layout_type || concept.layout || ''
-              const desc = concept.description || concept.prompt || concept.design_prompt || ''
+              const desc = concept.concept_description || concept.visual_description || concept.description || concept.prompt || ''
               const colors = concept.colors || concept.color_palette || []
               return (
                 <div key={i} className="concept-card">

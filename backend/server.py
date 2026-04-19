@@ -243,6 +243,83 @@ async def analyze_trends_direct(req: AnalyzeRequest):
         }
 
 
+# ---------------------------------------------------------------------------
+# Top trending endpoint (pre-canned popular subreddits)
+# ---------------------------------------------------------------------------
+
+_trending_cache: dict = {"data": None, "timestamp": 0}
+_CACHE_TTL = 300  # 5 minutes
+
+
+@app.get("/api/trending")
+async def top_trending():
+    """Get top trends from Google Trends + Wikipedia + Reddit. Cached for 5 minutes."""
+    import asyncio
+    import time
+
+    now = time.time()
+    if _trending_cache["data"] and (now - _trending_cache["timestamp"]) < _CACHE_TTL:
+        return _trending_cache["data"]
+
+    async def mine_google_trending():
+        """Google Trends is the primary signal for 'what's trending right now'."""
+        try:
+            from miners.trends_miner import mine_trends
+            # Get trending searches (empty keyword = general trending)
+            from pytrends.request import TrendReq
+            pytrends = TrendReq(hl="en-US", tz=360)
+            trending_df = pytrends.trending_searches(pn="united_states")
+            topics = trending_df[0].tolist()[:10]
+
+            # Get related queries for the top topics
+            results = []
+            for topic in topics[:5]:
+                try:
+                    data = await _run_in_thread(mine_trends, topic, timeframe="now 7-d")
+                    results.append(data)
+                except Exception:
+                    continue
+            return {
+                "keywords": results,
+                "top_trending_searches": topics,
+            }
+        except Exception:
+            return None
+
+    async def mine_wiki_trending():
+        try:
+            from miners.wikipedia_miner import search_wikipedia_trends
+            return await _run_in_thread(search_wikipedia_trends, "trending", limit=10)
+        except Exception:
+            return None
+
+    async def mine_reddit_popular():
+        try:
+            from miners.reddit_miner import mine_multiple_subreddits
+            return await _run_in_thread(mine_multiple_subreddits, ["popular", "all"], limit=15)
+        except Exception:
+            return None
+
+    trends_data, wikipedia_data, reddit_data = await asyncio.gather(
+        mine_google_trending(), mine_wiki_trending(), mine_reddit_popular()
+    )
+
+    try:
+        from miners.trend_scorer import score_trends
+        report = await _run_in_thread(score_trends, reddit_data, trends_data, None, wikipedia_data, None)
+        result = {
+            "status": "ok",
+            "report": report.model_dump(),
+            "cached": False,
+            "primary_source": "google_trends",
+        }
+        _trending_cache["data"] = result
+        _trending_cache["timestamp"] = now
+        return result
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
 def _truncate(text: str, max_len: int = 2000) -> str:
     """Truncate long tool outputs so we don't blow up the response."""
     if len(text) <= max_len:

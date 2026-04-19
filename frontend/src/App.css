@@ -511,6 +511,22 @@ body {
 .trend-empty h2 { font-size: 1.4rem; font-weight: 600; }
 .trend-empty p { color: var(--text-muted); max-width: 440px; line-height: 1.5; }
 
+.trending-now-btn {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  border: none;
+  color: white;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 8px 0;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.trending-now-btn:hover:not(:disabled) { opacity: 0.9; transform: scale(1.02); }
+.trending-now-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .trend-suggestions {
   display: flex;
   flex-wrap: wrap;

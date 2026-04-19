@@ -240,6 +240,43 @@ function TrendPulse({ onNavigateStudio }) {
     }
   }
 
+  const handleTrendingNow = async () => {
+    if (analyzing) return
+    setAnalyzing(true)
+    setTrends([])
+    setProgressMsg('Scanning the internet for the biggest trends right now...')
+
+    const msgs = [
+      'Mining top Reddit communities...',
+      'Checking Wikipedia for pageview spikes...',
+      'Cross-correlating signals...',
+      'Scoring and ranking...',
+    ]
+    let msgIdx = 0
+    const interval = setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, msgs.length - 1)
+      setProgressMsg(msgs[msgIdx])
+    }, 3000)
+
+    try {
+      const res = await fetch('http://localhost:8000/api/trending')
+      clearInterval(interval)
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      const data = await res.json()
+      if (data.report && data.report.trends) {
+        setTrends(data.report.trends)
+        setProgressMsg(`Found ${data.report.trends.length} trending topics${data.cached ? ' (cached)' : ''}`)
+      } else {
+        setProgressMsg('Could not load trending topics.')
+      }
+    } catch (err) {
+      clearInterval(interval)
+      setProgressMsg(`Error: ${err.message}`)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   const handleMakeStickers = (trend) => {
     setSelectedTrend(trend)
     onNavigateStudio()
@@ -270,9 +307,12 @@ function TrendPulse({ onNavigateStudio }) {
         <div className="trend-empty">
           <div className="trend-empty-icon">&#128200;</div>
           <h2>Trend Pulse</h2>
-          <p>Search for a topic to discover what's trending across Reddit, Google, YouTube, and more. We'll find the hottest sticker opportunities.</p>
+          <p>Search for a topic or see what's trending right now across the internet.</p>
+          <button className="trending-now-btn" onClick={handleTrendingNow} disabled={analyzing}>
+            🔥 What's Trending Right Now
+          </button>
           <div className="trend-suggestions">
-            {['viral memes', 'anime', 'gaming', 'cottagecore'].map(s => (
+            {['viral memes', 'anime', 'gaming', 'cottagecore', 'Taylor Swift'].map(s => (
               <button key={s} className="suggestion" onClick={() => setSearchTopic(s)}>{s}</button>
             ))}
           </div>

@@ -1,17 +1,39 @@
-import { createContext, useState, useContext, useRef, useCallback } from 'react'
+import { createContext, useState, useContext, useRef, useCallback, useEffect } from 'react'
 
 const TrendContext = createContext()
 
 const API_URL = 'http://localhost:8000/api/chat'
 
+// LocalStorage helpers
+function loadState(key, fallback) {
+  try {
+    const raw = localStorage.getItem(`stickerfuse_${key}`)
+    return raw ? JSON.parse(raw) : fallback
+  } catch { return fallback }
+}
+
+function saveState(key, value) {
+  try { localStorage.setItem(`stickerfuse_${key}`, JSON.stringify(value)) } catch {}
+}
+
 export function TrendProvider({ children }) {
-  const [trends, setTrends] = useState([])
-  const [selectedTrend, setSelectedTrend] = useState(null)
-  const [stickerIdeas, setStickerIdeas] = useState([])
-  const [viralBites, setViralBites] = useState([])
-  const [generatedStickers, setGeneratedStickers] = useState([])
-  const [messages, setMessages] = useState([])
+  const [trends, setTrendsRaw] = useState(() => loadState('trends', []))
+  const [selectedTrend, setSelectedTrendRaw] = useState(() => loadState('selectedTrend', null))
+  const [stickerIdeas, setStickerIdeasRaw] = useState(() => loadState('stickerIdeas', []))
+  const [viralBites, setViralBitesRaw] = useState(() => loadState('viralBites', []))
+  const [generatedStickers, setGeneratedStickersRaw] = useState(() => loadState('generatedStickers', []))
+  const [messages, setMessages] = useState(() => loadState('messages', []))
   const [chatLoading, setChatLoading] = useState(false)
+
+  // Persist to localStorage on change
+  const setTrends = (v) => { const val = typeof v === 'function' ? v(trends) : v; setTrendsRaw(val); saveState('trends', val) }
+  const setSelectedTrend = (v) => { setSelectedTrendRaw(v); saveState('selectedTrend', v) }
+  const setStickerIdeas = (v) => { const val = typeof v === 'function' ? v(stickerIdeas) : v; setStickerIdeasRaw(val); saveState('stickerIdeas', val) }
+  const setViralBites = (v) => { const val = typeof v === 'function' ? v(viralBites) : v; setViralBitesRaw(val); saveState('viralBites', val) }
+  const setGeneratedStickers = (v) => { const val = typeof v === 'function' ? v(generatedStickers) : v; setGeneratedStickersRaw(val); saveState('generatedStickers', val) }
+
+  // Also persist messages
+  useEffect(() => { saveState('messages', messages) }, [messages])
 
   // Stable ref for messages to avoid stale closures
   const messagesRef = useRef(messages)
