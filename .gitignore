@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (for future Next.js frontend)
+node_modules/
+.next/
+out/
+
+# Project outputs
+outputs/
+*.png
+*.svg
+tiktok_shots/
+tiktok_*_results.json
