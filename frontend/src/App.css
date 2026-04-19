@@ -534,11 +534,54 @@ body {
 
 .trend-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   justify-content: center;
-  padding: 40px;
+  padding: 60px 40px;
   color: var(--text-muted);
+}
+
+.progress-msg {
+  font-size: 0.9rem;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.progress-bar-track {
+  width: 300px;
+  height: 4px;
+  background: var(--surface);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #6366f1);
+  border-radius: 2px;
+}
+
+.progress-bar-animated {
+  width: 40%;
+  animation: progressSlide 1.5s ease-in-out infinite;
+}
+
+@keyframes progressSlide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(400%); }
+  100% { transform: translateX(-100%); }
+}
+
+.progress-summary {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.emotional-intensity {
+  font-size: 0.78rem;
+  color: #f59e0b;
 }
 
 /* Trend Grid */

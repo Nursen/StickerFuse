@@ -29,7 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 load_dotenv(PROJECT_ROOT / ".env")
 
-from backend.chat_agent import get_agent  # noqa: E402
+from backend.chat_agent import get_agent, _run_in_thread  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # App
@@ -129,6 +129,118 @@ async def chat(req: ChatRequest):
             reply=f"Something went wrong: {exc}",
             tool_results=[],
         )
+
+
+# ---------------------------------------------------------------------------
+# Direct trend analysis endpoint (bypasses chat agent for speed)
+# ---------------------------------------------------------------------------
+
+
+class AnalyzeRequest(BaseModel):
+    topic: str
+    subreddits: list[str] = []
+    limit: int = 15
+
+
+@app.post("/api/analyze")
+async def analyze_trends_direct(req: AnalyzeRequest):
+    """Run trend analysis directly — parallel mining, no chat agent overhead.
+
+    Returns a TrendReport with progress updates via structured JSON.
+    """
+    import asyncio
+
+    topic = req.topic.strip()
+    subreddits = req.subreddits or [topic.lower().replace(" ", "")]
+    search_terms = [topic]
+    limit = min(req.limit, 50)
+
+    # Track progress
+    progress = {"sources_total": 5, "sources_done": 0, "errors": []}
+
+    async def mine_reddit():
+        try:
+            from miners.reddit_miner import mine_multiple_subreddits
+            return await _run_in_thread(mine_multiple_subreddits, subreddits, limit=limit)
+        except Exception as e:
+            progress["errors"].append(f"Reddit: {e}")
+            return None
+        finally:
+            progress["sources_done"] += 1
+
+    async def mine_google_trends():
+        try:
+            from miners.trends_miner import mine_multiple_keywords
+            return await _run_in_thread(mine_multiple_keywords, search_terms)
+        except Exception as e:
+            progress["errors"].append(f"Google Trends: {e}")
+            return None
+        finally:
+            progress["sources_done"] += 1
+
+    async def mine_yt():
+        try:
+            from miners.youtube_miner import mine_youtube
+            return await _run_in_thread(mine_youtube, topic, limit=10)
+        except Exception as e:
+            progress["errors"].append(f"YouTube: {e}")
+            return None
+        finally:
+            progress["sources_done"] += 1
+
+    async def mine_wiki():
+        try:
+            from miners.wikipedia_miner import search_wikipedia_trends
+            return await _run_in_thread(search_wikipedia_trends, topic, limit=5)
+        except Exception as e:
+            progress["errors"].append(f"Wikipedia: {e}")
+            return None
+        finally:
+            progress["sources_done"] += 1
+
+    async def mine_web():
+        try:
+            from miners.web_search_miner import mine_web_search
+            return await _run_in_thread(mine_web_search, f"{topic} trending")
+        except Exception as e:
+            progress["errors"].append(f"Web search: {e}")
+            return None
+        finally:
+            progress["sources_done"] += 1
+
+    # Run ALL sources in parallel
+    reddit_data, trends_data, youtube_data, wikipedia_data, web_search_data = (
+        await asyncio.gather(
+            mine_reddit(),
+            mine_google_trends(),
+            mine_yt(),
+            mine_wiki(),
+            mine_web(),
+        )
+    )
+
+    # Score with cross-platform correlation
+    try:
+        from miners.trend_scorer import score_trends
+        report = await _run_in_thread(
+            score_trends,
+            reddit_data,
+            trends_data,
+            youtube_data,
+            wikipedia_data,
+            web_search_data,
+        )
+        return {
+            "status": "ok",
+            "report": report.model_dump(),
+            "progress": progress,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "progress": progress,
+        }
 
 
 def _truncate(text: str, max_len: int = 2000) -> str:

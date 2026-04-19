@@ -86,17 +86,22 @@ function LongevityBadge({ prediction }) {
 }
 
 function TrendCard({ trend, onExpand, expanded, onMakeStickers }) {
-  const name = trend.trend_name || trend.name || 'Unknown Trend'
-  const spike = trend.spike_score || trend.spike || 0
-  const velocity = trend.velocity || trend.growth_rate || 0
-  const comments = trend.comment_count || trend.comments || trend.engagement || 0
-  const platforms = trend.platforms || trend.sources || []
-  const confidence = trend.confidence || trend.confidence_level || ''
-  const sentiment = trend.sentiment || trend.sentiment_label || ''
-  const trajectory = trend.trajectory || ''
-  const longevity = trend.longevity || trend.still_trending || ''
-  const evidence = trend.evidence || trend.data_points || []
-  const evidenceCount = Array.isArray(evidence) ? evidence.length : (trend.evidence_count || 0)
+  const name = trend.name || trend.trend_name || 'Unknown Trend'
+  const spike = trend.spike_score || 0
+  const velocity = trend.engagement_velocity || 0
+  const comments = trend.comment_volume || 0
+  const platforms = trend.platforms_confirmed || trend.source_platforms || []
+  const confidence = trend.confidence || ''
+  const sentiment = trend.sentiment_label || ''
+  const sentimentScore = trend.sentiment_score
+  const emotionalIntensity = trend.emotional_intensity
+  const trajectory = trend.trajectory || trend.trend_direction || ''
+  const longevity = trend.will_be_trending_in_3_days
+  const poissonEta = trend.poisson_eta
+  const postCount = trend.post_count || 0
+  const platformCount = trend.platform_count || platforms.length
+  const evidence = trend.evidence || []
+  const evidenceCount = evidence.length
 
   return (
     <div className={`trend-card ${expanded ? 'expanded' : ''}`}>
@@ -121,23 +126,32 @@ function TrendCard({ trend, onExpand, expanded, onMakeStickers }) {
         </div>
 
         <div className="trend-metrics">
-          <span>spike: {spike.toFixed ? spike.toFixed(1) : spike}x</span>
-          <span>velocity: {velocity.toFixed ? velocity.toFixed(1) : velocity}/hr</span>
-          <span>{comments} comments</span>
+          <span title="Spike score (Poisson)">📊 spike: {spike.toFixed ? spike.toFixed(1) : spike}x</span>
+          <span title="Engagement per hour">📈 {velocity.toFixed ? velocity.toFixed(1) : velocity}/hr</span>
+          <span title="Total comments">💬 {comments}</span>
+          <span title="Posts analyzed">📝 {postCount} posts</span>
         </div>
 
         <div className="trend-indicators">
-          <SentimentDisplay sentiment={sentiment} />
+          {sentiment && <SentimentDisplay sentiment={sentiment} />}
+          {emotionalIntensity != null && (
+            <span className="emotional-intensity" title="% of posts with strong emotion">
+              🔥 {(emotionalIntensity * 100).toFixed(0)}% intense
+            </span>
+          )}
           <TrajectoryBadge trajectory={trajectory} />
-          {longevity && (
+          {longevity != null && (
             <span className="trend-longevity">
-              3-day: <LongevityBadge prediction={longevity} />
+              ⏱ 3-day: <LongevityBadge prediction={longevity === true ? 'YES' : longevity === false ? 'NO' : 'MAYBE'} />
             </span>
           )}
         </div>
 
-        {evidenceCount > 0 && (
-          <div className="trend-evidence-count">Backed by {evidenceCount} data points</div>
+        {(evidenceCount > 0 || platformCount > 1) && (
+          <div className="trend-evidence-count">
+            {platformCount > 1 ? `Confirmed on ${platformCount} platforms · ` : ''}
+            Backed by {evidenceCount} data points
+          </div>
         )}
       </div>
 
@@ -162,26 +176,68 @@ function TrendCard({ trend, onExpand, expanded, onMakeStickers }) {
   )
 }
 
+const PROGRESS_SOURCES = ['Reddit', 'Google Trends', 'YouTube', 'Wikipedia', 'Web Search']
+
 function TrendPulse({ onNavigateStudio }) {
-  const { trends, setTrends, setSelectedTrend, sendChatMessage, chatLoading } = useTrend()
+  const { trends, setTrends, setSelectedTrend } = useTrend()
   const [searchTopic, setSearchTopic] = useState('')
   const [expandedIdx, setExpandedIdx] = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [progressMsg, setProgressMsg] = useState('')
 
   const handleAnalyze = async () => {
     if (!searchTopic.trim() || analyzing) return
     setAnalyzing(true)
-    const result = await sendChatMessage(
-      `analyze trends for ${searchTopic} on subreddits ${searchTopic}`,
-      { silent: false }
-    )
-    if (result && result.toolResults) {
-      const parsed = extractTrends(result.toolResults)
-      if (parsed.length > 0) {
-        setTrends(parsed)
+    setTrends([])
+    setProgressMsg('Starting analysis across 5 platforms...')
+
+    // Animate progress messages
+    const msgs = [
+      'Mining Reddit for hot posts...',
+      'Checking Google Trends for search spikes...',
+      'Scanning YouTube for viral videos...',
+      'Analyzing Wikipedia pageview spikes...',
+      'Searching web for cross-platform mentions...',
+      'Cross-correlating signals across platforms...',
+      'Running sentiment analysis...',
+      'Detecting statistical spikes (Poisson)...',
+      'Scoring and ranking trends...',
+    ]
+    let msgIdx = 0
+    const interval = setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, msgs.length - 1)
+      setProgressMsg(msgs[msgIdx])
+    }, 3000)
+
+    try {
+      const res = await fetch('http://localhost:8000/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: searchTopic }),
+      })
+      clearInterval(interval)
+
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      const data = await res.json()
+
+      if (data.report && data.report.trends) {
+        setTrends(data.report.trends)
+        const errCount = (data.progress?.errors || []).length
+        setProgressMsg(
+          `Found ${data.report.trends.length} trends from ${data.report.total_posts_analyzed || 0} posts` +
+          (errCount > 0 ? ` (${errCount} source${errCount > 1 ? 's' : ''} had issues)` : '')
+        )
+      } else if (data.error) {
+        setProgressMsg(`Analysis failed: ${data.error}`)
+      } else {
+        setProgressMsg('No trends found. Try a broader topic.')
       }
+    } catch (err) {
+      clearInterval(interval)
+      setProgressMsg(`Error: ${err.message}`)
+    } finally {
+      setAnalyzing(false)
     }
-    setAnalyzing(false)
   }
 
   const handleMakeStickers = (trend) => {
@@ -223,11 +279,18 @@ function TrendPulse({ onNavigateStudio }) {
         </div>
       )}
 
-      {analyzing && trends.length === 0 && (
+      {analyzing && (
         <div className="trend-loading">
           <div className="typing"><span></span><span></span><span></span></div>
-          <p>Mining trends for "{searchTopic}"...</p>
+          <p className="progress-msg">{progressMsg}</p>
+          <div className="progress-bar-track">
+            <div className="progress-bar-fill progress-bar-animated" />
+          </div>
         </div>
+      )}
+
+      {!analyzing && progressMsg && trends.length > 0 && (
+        <p className="progress-summary">{progressMsg}</p>
       )}
 
       {trends.length > 0 && (
