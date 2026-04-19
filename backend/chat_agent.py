@@ -60,6 +60,8 @@ You have access to a full creative pipeline:
 9. **Generate Sticker Ideas** -- turn a viral bite into concrete sticker design concepts.
 10. **Generate Design Spec** -- produce a detailed image-generation prompt for a sticker idea.
 11. **Generate Sticker Image** -- actually create the PNG sticker using Gemini Nano Banana image gen.
+12. **Analyze Community** -- paste chat logs, Discord exports, or forum posts and extract \
+    recurring phrases, in-jokes, and sticker-worthy moments. Great for niche communities.
 
 When a user mentions a topic, use analyze_trends FIRST to get cross-platform data. \
 Present the metrics (spike scores, platform count, confidence, cross_platform_score) \
@@ -385,6 +387,39 @@ async def generate_sticker_image(
         return f"Image generation failed: {exc}"
 
 
+async def analyze_community(
+    ctx: RunContext[None],
+    text: str,
+) -> str:
+    """Analyze community text (chat logs, Discord exports, forum posts) for recurring
+    phrases, in-jokes, and sticker-worthy moments.
+
+    Paste raw community text and this tool will:
+    1. Mine for recurring phrases and emoji patterns (free, instant via VADER)
+    2. Run AI interpretation to identify sticker opportunities (cheap, Gemini Flash-Lite)
+
+    Args:
+        text: Raw community text to analyze.
+    """
+    from miners.community_miner import mine_community_text
+    from agents.community_agent import analyze_community_text
+
+    # Step 1: Mine for patterns (instant, free)
+    mined = await _run_in_thread(mine_community_text, text)
+
+    # Step 2: AI interpretation (cheap, Gemini Flash-Lite)
+    analysis = await _run_in_thread(analyze_community_text, mined)
+
+    return json.dumps(
+        {
+            "mining_results": mined,
+            "ai_analysis": analysis.model_dump() if hasattr(analysis, "model_dump") else analysis,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Lazy agent builder
 # ---------------------------------------------------------------------------
@@ -401,6 +436,7 @@ _TOOLS = [
     generate_sticker_ideas,
     generate_design_spec,
     generate_sticker_image,
+    analyze_community,
 ]
 
 
