@@ -19,6 +19,7 @@ from pydantic_ai.providers.google import GoogleProvider
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from schemas.design import DesignSpec
+from utils.llm_retry import sync_retry_llm
 
 load_dotenv()
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -76,7 +77,7 @@ def generate_design_spec(
         "It must be Cricut-compatible (clean edges, transparent background)."
     )
 
-    result = design_agent.run_sync("\n\n".join(parts))
+    result = sync_retry_llm(lambda: design_agent.run_sync("\n\n".join(parts)))
     return result.output
 
 

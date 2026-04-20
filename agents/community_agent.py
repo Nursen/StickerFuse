@@ -26,6 +26,7 @@ from pydantic_ai.providers.google import GoogleProvider
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from schemas.community import CommunityAnalysis
+from utils.llm_retry import sync_retry_llm
 
 load_dotenv()
 
@@ -117,5 +118,5 @@ def analyze_community_text(mined_data: dict) -> CommunityAnalysis:
     )
 
     user_prompt = "".join(prompt_parts)
-    result = community_agent.run_sync(user_prompt)
+    result = sync_retry_llm(lambda: community_agent.run_sync(user_prompt))
     return result.output

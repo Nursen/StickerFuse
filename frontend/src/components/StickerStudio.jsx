@@ -1,110 +1,163 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTrend } from '../context/TrendContext'
 
-function extractViralBites(toolResults) {
-  if (!toolResults) return []
-  const bites = []
-  for (const tr of toolResults) {
-    let data = tr.result || tr.data || tr.output || tr
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data) } catch (_) { continue }
-    }
-    if (data && data.viral_bites && Array.isArray(data.viral_bites)) {
-      bites.push(...data.viral_bites)
-    } else if (data && data.bites && Array.isArray(data.bites)) {
-      bites.push(...data.bites)
-    } else if (Array.isArray(data)) {
-      const biteLike = data.filter(d => d && (d.text || d.phrase || d.bite))
-      bites.push(...biteLike)
-    }
-  }
-  return bites
-}
+const API_BASE = 'http://localhost:8000'
 
-function extractStickerConcepts(toolResults) {
-  if (!toolResults) return []
-  const concepts = []
-  for (const tr of toolResults) {
-    let data = tr.result || tr.data || tr.output || tr
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data) } catch (_) { continue }
-    }
-    if (data && data.sticker_ideas && Array.isArray(data.sticker_ideas)) {
-      concepts.push(...data.sticker_ideas)
-    } else if (data && data.ideas && Array.isArray(data.ideas)) {
-      concepts.push(...data.ideas)
-    } else if (data && data.concepts && Array.isArray(data.concepts)) {
-      concepts.push(...data.concepts)
-    } else if (Array.isArray(data)) {
-      const conceptLike = data.filter(d => d && (d.art_style || d.style || d.prompt || d.description))
-      concepts.push(...conceptLike)
-    }
+async function studioPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || data.status === 'error') {
+    throw new Error(data.error || `Request failed (${res.status})`)
   }
-  return concepts
-}
-
-function extractStickerImage(toolResults) {
-  if (!toolResults) return []
-  const images = []
-  for (const tr of toolResults) {
-    const raw = tr.result || tr.data || tr.output || ''
-    if (typeof raw === 'string') {
-      const match = raw.match(/Sticker image saved to:.*?([^/\\]+\.png)/i)
-      if (match) images.push(match[1])
-      // Also check for just a filename pattern
-      const fnMatch = raw.match(/([a-zA-Z0-9_-]+\.png)/g)
-      if (fnMatch) {
-        for (const fn of fnMatch) {
-          if (!images.includes(fn)) images.push(fn)
-        }
-      }
-    }
-  }
-  return images
+  return data
 }
 
 function StickerStudio({ onNavigateTrends }) {
   const {
-    selectedTrend, setSelectedTrend,
-    viralBites, setViralBites,
+    selectedTrend,
     stickerIdeas, setStickerIdeas,
     generatedStickers, setGeneratedStickers,
-    sendChatMessage, chatLoading,
+    chatLoading,
   } = useTrend()
 
-  const [selectedBite, setSelectedBite] = useState(null)
   const [selectedConcept, setSelectedConcept] = useState(null)
-  const [loadingBites, setLoadingBites] = useState(false)
   const [loadingConcepts, setLoadingConcepts] = useState(false)
+  const [loadingPhrases, setLoadingPhrases] = useState(false)
   const [loadingImage, setLoadingImage] = useState(false)
   const [refinement, setRefinement] = useState('')
+  const [conceptMode, setConceptMode] = useState('auto')
+  const [studioNotice, setStudioNotice] = useState('')
+  const [phraseOptions, setPhraseOptions] = useState([])
+  const [selectedPhraseOption, setSelectedPhraseOption] = useState(null)
 
   const trendName = selectedTrend
     ? (selectedTrend.trend_name || selectedTrend.name || 'selected trend')
     : null
 
-  const handleExtractBites = async () => {
-    if (!trendName || loadingBites) return
-    setLoadingBites(true)
-    const result = await sendChatMessage(`extract viral bites from '${trendName}'`)
-    if (result && result.toolResults) {
-      const parsed = extractViralBites(result.toolResults)
-      if (parsed.length > 0) setViralBites(parsed)
+  const parentTopic = selectedTrend?.parent_topic || ''
+  const studioBusy = loadingConcepts || loadingPhrases || loadingImage
+
+  useEffect(() => {
+    setPhraseOptions([])
+    setSelectedPhraseOption(null)
+    setStudioNotice('')
+  }, [selectedTrend?.name, selectedTrend?.trend_name])
+
+  useEffect(() => {
+    if (conceptMode !== 'phrase') {
+      setPhraseOptions([])
+      setSelectedPhraseOption(null)
     }
-    setLoadingBites(false)
+  }, [conceptMode])
+
+  const getTrendContextText = () => {
+    if (!selectedTrend) return ''
+    const desc = selectedTrend.description || ''
+    const evidence = Array.isArray(selectedTrend.evidence) ? selectedTrend.evidence : []
+    const evidenceTitles = evidence
+      .slice(0, 5)
+      .map((e) => e?.title || e?.text || '')
+      .filter(Boolean)
+    const bits = []
+    if (parentTopic) bits.push(`User searched / parent topic: ${parentTopic}`)
+    bits.push(desc, ...evidenceTitles)
+    return bits.filter(Boolean).join(' | ')
   }
 
-  const handleGenerateConcepts = async (bite) => {
-    if (loadingConcepts) return
-    setSelectedBite(bite)
-    setLoadingConcepts(true)
-    const biteText = bite.text || bite.phrase || bite.bite || JSON.stringify(bite)
-    const result = await sendChatMessage(`generate sticker ideas for '${biteText}'`)
-    if (result && result.toolResults) {
-      const parsed = extractStickerConcepts(result.toolResults)
-      if (parsed.length > 0) setStickerIdeas(parsed)
+  const handleSuggestPhrases = async () => {
+    if (!trendName || loadingPhrases) return
+    setLoadingPhrases(true)
+    setStudioNotice('')
+    setPhraseOptions([])
+    try {
+      const data = await studioPost('/api/studio/suggest-phrases', {
+        parent_topic: parentTopic,
+        moment: trendName,
+        trend_context: getTrendContextText(),
+      })
+      const phrases = data.phrases || []
+      if (phrases.length > 0) {
+        setPhraseOptions(phrases)
+        setStudioNotice('Pick one phrase, then click “Brainstorm sticker concepts”.')
+      } else {
+        setStudioNotice('No phrases returned. Try again.')
+      }
+    } catch (e) {
+      setStudioNotice(e.message || 'Could not load phrase options.')
+    } finally {
+      setLoadingPhrases(false)
     }
-    setLoadingConcepts(false)
+  }
+
+  const runAutoImages = async (concepts, momentForContext) => {
+    if (!Array.isArray(concepts) || concepts.length === 0) return 0
+    let n = 0
+    for (const concept of concepts.slice(0, 2)) {
+      const prompt = concept.visual_description || concept.concept_description || concept.prompt || concept.description
+      if (!prompt) continue
+      try {
+        const data = await studioPost('/api/studio/generate-image', {
+          prompt,
+          parent_topic: parentTopic,
+          moment: momentForContext || trendName,
+        })
+        if (data.filename) {
+          n += 1
+          setGeneratedStickers(prev => [...prev, data.filename])
+        }
+      } catch {
+        /* one image failure should not block the rest */
+      }
+    }
+    return n
+  }
+
+  const handleGenerateConceptsFromTrend = async () => {
+    if (!trendName || loadingConcepts) return
+    if (conceptMode === 'phrase' && phraseOptions.length > 0 && !selectedPhraseOption) {
+      setStudioNotice('Select one of the suggested phrases first, or clear phrase options by switching mode.')
+      return
+    }
+    setStudioNotice('')
+    setLoadingConcepts(true)
+    setStickerIdeas([])
+    const momentLabel = conceptMode === 'phrase' && selectedPhraseOption ? selectedPhraseOption : trendName
+    try {
+      const data = await studioPost('/api/studio/brainstorm', {
+        parent_topic: parentTopic,
+        moment: momentLabel,
+        trend_context: getTrendContextText(),
+        mode: conceptMode,
+      })
+      const ideas = data.data?.ideas ?? []
+      if (ideas.length === 0) {
+        setStudioNotice('No concepts returned. Check your API key and try again.')
+        return
+      }
+      const modeFiltered = ideas.filter((idea) => {
+        const layout = idea.layout_type || idea.layout || ''
+        if (conceptMode === 'visual') return layout !== 'text_only'
+        if (conceptMode === 'phrase') return layout !== 'image_only'
+        return true
+      })
+      const finalIdeas = modeFiltered.length > 0 ? modeFiltered : ideas
+      setStickerIdeas(finalIdeas)
+
+      setLoadingImage(true)
+      const created = await runAutoImages(finalIdeas, momentLabel)
+      setLoadingImage(false)
+      if (created > 0) {
+        setStudioNotice(`Generated ${created} sticker preview${created > 1 ? 's' : ''} in step 3.`)
+      }
+    } catch (e) {
+      setStudioNotice(e.message || 'Brainstorm failed.')
+    } finally {
+      setLoadingConcepts(false)
+    }
   }
 
   const handleGenerateImage = async (concept) => {
@@ -112,26 +165,43 @@ function StickerStudio({ onNavigateTrends }) {
     setSelectedConcept(concept)
     setLoadingImage(true)
     const prompt = concept.visual_description || concept.concept_description || concept.prompt || concept.description || JSON.stringify(concept)
-    const result = await sendChatMessage(`generate a sticker image for: ${prompt}`)
-    if (result && result.toolResults) {
-      const images = extractStickerImage(result.toolResults)
-      if (images.length > 0) {
-        setGeneratedStickers(prev => [...prev, ...images])
+    try {
+      const data = await studioPost('/api/studio/generate-image', {
+        prompt,
+        parent_topic: parentTopic,
+        moment: trendName,
+      })
+      if (data.filename) {
+        setGeneratedStickers(prev => [...prev, data.filename])
       }
+    } catch (e) {
+      setStudioNotice(e.message || 'Image generation failed.')
+    } finally {
+      setLoadingImage(false)
     }
-    setLoadingImage(false)
   }
 
   const handleRefinement = async () => {
     if (!refinement.trim()) return
-    const result = await sendChatMessage(refinement)
-    if (result && result.toolResults) {
-      const images = extractStickerImage(result.toolResults)
-      if (images.length > 0) {
-        setGeneratedStickers(prev => [...prev, ...images])
+    setLoadingImage(true)
+    const base = selectedConcept
+      ? `${refinement}\n\nReference concept: ${selectedConcept.visual_description || selectedConcept.concept_description || ''}`
+      : `${refinement}\n\nTopic: ${trendName}${parentTopic ? `; parent: ${parentTopic}` : ''}`
+    try {
+      const data = await studioPost('/api/studio/generate-image', {
+        prompt: base,
+        parent_topic: parentTopic,
+        moment: trendName,
+      })
+      if (data.filename) {
+        setGeneratedStickers(prev => [...prev, data.filename])
       }
+    } catch (e) {
+      setStudioNotice(e.message || 'Refinement failed.')
+    } finally {
+      setLoadingImage(false)
+      setRefinement('')
     }
-    setRefinement('')
   }
 
   if (!selectedTrend) {
@@ -150,61 +220,77 @@ function StickerStudio({ onNavigateTrends }) {
       <div className="studio-header">
         <button className="back-link" onClick={onNavigateTrends}>&larr; Back to Trends</button>
         <h2>Creating stickers for: <span className="studio-trend-name">{trendName}</span></h2>
+        {parentTopic && (
+          <p className="studio-parent-topic">Parent topic: <strong>{parentTopic}</strong></p>
+        )}
       </div>
 
-      {/* Step 1: Viral Bites */}
       <section className="studio-section">
         <div className="studio-section-header">
-          <h3><span className="step-num">1</span> Viral Bites</h3>
-          {viralBites.length === 0 && (
-            <button className="studio-action-btn" onClick={handleExtractBites} disabled={loadingBites}>
-              {loadingBites ? 'Extracting...' : 'Extract Viral Bites'}
-            </button>
-          )}
+          <h3><span className="step-num">1</span> Sticker Direction</h3>
+          <select
+            value={conceptMode}
+            onChange={(e) => setConceptMode(e.target.value)}
+            disabled={studioBusy}
+            className="studio-mode-select"
+            aria-label="Concept mode"
+          >
+            <option value="auto">Auto (best fit)</option>
+            <option value="phrase">Phrase-focused</option>
+            <option value="visual">Visual-focused</option>
+          </select>
         </div>
-        {loadingBites && (
+
+        {conceptMode === 'phrase' && (
+          <div className="studio-phrase-step">
+            <h4 className="studio-subheading">Phrase options</h4>
+            <p className="studio-hint">Pick distinct wordings first, then brainstorm sticker art.</p>
+            <button
+              type="button"
+              className="studio-action-btn secondary"
+              onClick={handleSuggestPhrases}
+              disabled={studioBusy}
+            >
+              {loadingPhrases ? 'Suggesting…' : 'Suggest phrase options'}
+            </button>
+            {phraseOptions.length > 0 && (
+              <div className="phrase-chips">
+                {phraseOptions.map((p, i) => (
+                  <button
+                    type="button"
+                    key={i}
+                    className={`phrase-chip ${selectedPhraseOption === p ? 'selected' : ''}`}
+                    onClick={() => setSelectedPhraseOption(p)}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button
+          className="studio-action-btn"
+          onClick={handleGenerateConceptsFromTrend}
+          disabled={loadingConcepts || (conceptMode === 'phrase' && phraseOptions.length > 0 && !selectedPhraseOption)}
+        >
+          {loadingConcepts ? 'Brainstorming...' : 'Brainstorm sticker concepts'}
+        </button>
+        {(loadingConcepts || loadingPhrases) && (
           <div className="studio-loading">
             <div className="typing"><span></span><span></span><span></span></div>
-            <span>Finding viral phrases...</span>
+            <span>{loadingPhrases ? 'Generating phrase options…' : 'Generating sticker concepts…'}</span>
           </div>
         )}
-        {viralBites.length > 0 && (
-          <div className="bites-scroll">
-            {viralBites.map((bite, i) => {
-              const text = bite.text || bite.phrase || bite.bite || JSON.stringify(bite)
-              const source = bite.source_type || bite.source || bite.type || ''
-              const potential = bite.monetization_potential || bite.potential || ''
-              const isSelected = selectedBite === bite
-              return (
-                <div
-                  key={i}
-                  className={`bite-card ${isSelected ? 'selected' : ''}`}
-                  onClick={() => handleGenerateConcepts(bite)}
-                >
-                  <div className="bite-text">"{text}"</div>
-                  <div className="bite-meta">
-                    {source && <span className="bite-source">{source}</span>}
-                    {potential && <span className="bite-potential">{potential}</span>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        {studioNotice && <div className="studio-note">{studioNotice}</div>}
       </section>
 
-      {/* Step 2: Sticker Concepts */}
       <section className="studio-section">
         <div className="studio-section-header">
           <h3><span className="step-num">2</span> Sticker Concepts</h3>
         </div>
-        {loadingConcepts && (
-          <div className="studio-loading">
-            <div className="typing"><span></span><span></span><span></span></div>
-            <span>Generating concepts...</span>
-          </div>
-        )}
-        {stickerIdeas.length > 0 && (
+        {stickerIdeas.length > 0 ? (
           <div className="concepts-grid">
             {stickerIdeas.map((concept, i) => {
               const style = concept.art_style || concept.style || ''
@@ -226,7 +312,7 @@ function StickerStudio({ onNavigateTrends }) {
                   <button
                     className="generate-image-btn"
                     onClick={() => handleGenerateImage(concept)}
-                    disabled={loadingImage}
+                    disabled={studioBusy || chatLoading}
                   >
                     {loadingImage && selectedConcept === concept ? 'Generating...' : 'Generate Image'}
                   </button>
@@ -234,10 +320,13 @@ function StickerStudio({ onNavigateTrends }) {
               )
             })}
           </div>
+        ) : (
+          !loadingConcepts && (
+            <p className="studio-hint">Concepts will appear here after you run “Brainstorm sticker concepts”.</p>
+          )
         )}
       </section>
 
-      {/* Step 3: Generated Stickers */}
       <section className="studio-section">
         <div className="studio-section-header">
           <h3><span className="step-num">3</span> Generated Stickers</h3>
@@ -251,15 +340,16 @@ function StickerStudio({ onNavigateTrends }) {
         {generatedStickers.length > 0 && (
           <div className="stickers-grid">
             {generatedStickers.map((filename, i) => (
-              <div key={i} className="generated-sticker-card">
+              <div key={`${filename}-${i}`} className="generated-sticker-card">
                 <img
-                  src={`http://localhost:8000/stickers/${filename}`}
+                  src={`${API_BASE}/stickers/${filename}`}
                   alt={`Sticker ${i + 1}`}
                   className="generated-sticker-img"
+                  onError={(e) => { e.target.style.opacity = 0.3 }}
                 />
                 <div className="sticker-actions">
                   <a
-                    href={`http://localhost:8000/stickers/${filename}`}
+                    href={`${API_BASE}/stickers/${filename}`}
                     download={filename}
                     className="download-btn"
                   >
@@ -270,7 +360,7 @@ function StickerStudio({ onNavigateTrends }) {
                     onClick={() => {
                       if (selectedConcept) handleGenerateImage(selectedConcept)
                     }}
-                    disabled={loadingImage}
+                    disabled={studioBusy}
                   >
                     Regenerate
                   </button>
@@ -281,7 +371,6 @@ function StickerStudio({ onNavigateTrends }) {
         )}
       </section>
 
-      {/* Refinement input */}
       <div className="studio-refinement">
         <div className="input-wrap">
           <textarea
@@ -291,12 +380,12 @@ function StickerStudio({ onNavigateTrends }) {
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefinement() } }}
             placeholder="Refine your stickers... (e.g. 'make it more pastel', 'add sparkles')"
             rows={1}
-            disabled={chatLoading}
+            disabled={studioBusy}
           />
           <button
             className="send-btn"
             onClick={handleRefinement}
-            disabled={!refinement.trim() || chatLoading}
+            disabled={!refinement.trim() || studioBusy}
             aria-label="Send refinement"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

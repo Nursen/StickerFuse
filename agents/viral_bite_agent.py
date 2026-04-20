@@ -20,6 +20,7 @@ from pydantic_ai.providers.google import GoogleProvider
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from schemas.viral import ViralBiteCollection
+from utils.llm_retry import sync_retry_llm
 
 load_dotenv()
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -38,6 +39,12 @@ For each viral bite, assess its monetization potential for sticker designs:
 
 Be specific and exact — quote the actual text people are using, not paraphrases.
 Include the cultural context so a designer understands the reference.\
+
+CRITICAL QUALITY BAR:
+- Prefer EVENT-LEVEL moments (who did what, where/when) over generic topic words.
+- Reject generic fragments like "stage", "vibe", "performance", "festival", "technical issue" unless tied to a concrete incident.
+- Each bite must be understandable as a standalone moment and include a concrete hook.
+- If a candidate is too vague, replace it with a more specific one.
 """
 
 
@@ -73,7 +80,7 @@ def extract_viral_bites(
         "Extract 4-6 viral bites from this subtopic that would make great sticker designs."
     )
 
-    result = viral_bite_agent.run_sync("\n\n".join(parts))
+    result = sync_retry_llm(lambda: viral_bite_agent.run_sync("\n\n".join(parts)))
     return result.output
 
 

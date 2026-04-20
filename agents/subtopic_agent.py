@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from schemas.topic import SubtopicResult
 from schemas.trend import TrendReport
+from utils.llm_retry import sync_retry_llm
 
 load_dotenv()
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -122,7 +123,7 @@ def discover_subtopics(
         )
 
     user_prompt = "\n".join(parts)
-    result = subtopic_agent.run_sync(user_prompt)
+    result = sync_retry_llm(lambda: subtopic_agent.run_sync(user_prompt))
     return result.output
 
 

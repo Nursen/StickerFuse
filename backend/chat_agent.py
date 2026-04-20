@@ -76,7 +76,8 @@ steer the conversation back toward sticker opportunities.\
 
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-_agent: Agent | None = None
+# One Agent instance per model name (primary + optional fallback).
+_agents_by_model: dict[str, Agent] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -440,26 +441,46 @@ _TOOLS = [
 ]
 
 
-def get_agent() -> Agent:
-    """Build the chat agent on first call (requires GEMINI_API_KEY)."""
-    global _agent
-    if _agent is not None:
-        return _agent
+def get_agent(model_name: str | None = None) -> Agent:
+    """Build the chat agent for a given model (cached; requires GEMINI_API_KEY)."""
+    name = (model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")).strip()
+    if name in _agents_by_model:
+        return _agents_by_model[name]
 
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("Set GEMINI_API_KEY or GOOGLE_API_KEY in .env")
 
     provider = GoogleProvider(api_key=api_key)
-    model = GoogleModel(DEFAULT_MODEL, provider=provider)
+    model = GoogleModel(name, provider=provider)
 
-    _agent = Agent(
+    agent = Agent(
         model=model,
         system_prompt=SYSTEM_PROMPT,
         output_type=str,
     )
 
     for fn in _TOOLS:
-        _agent.tool(fn)
+        agent.tool(fn)
 
-    return _agent
+    _agents_by_model[name] = agent
+    return agent
+
+
+async def run_chat_with_retries(user_prompt: str):
+    """Run the main chat agent with retries and optional model fallback."""
+    from utils.llm_retry import async_retry_llm, is_transient_gemini_error
+
+    primary = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    fallback = os.getenv("GEMINI_MODEL_FALLBACK", "").strip()
+
+    async def run_one(model: str):
+        ag = get_agent(model)
+        return await async_retry_llm(lambda: ag.run(user_prompt))
+
+    try:
+        return await run_one(primary)
+    except Exception as e:
+        if fallback and fallback != primary and is_transient_gemini_error(e):
+            return await run_one(fallback)
+        raise

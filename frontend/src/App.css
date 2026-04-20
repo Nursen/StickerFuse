@@ -901,6 +901,81 @@ body {
   font-size: 0.85rem;
 }
 
+.studio-note {
+  margin: 0 0 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.studio-mode-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+}
+
+.studio-parent-topic {
+  margin: 6px 0 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.studio-subheading {
+  font-size: 0.88rem;
+  margin: 10px 0 4px 0;
+  font-weight: 600;
+}
+
+.studio-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0 0 8px 0;
+}
+
+.studio-phrase-step {
+  margin-bottom: 12px;
+}
+
+.studio-action-btn.secondary {
+  margin-right: 8px;
+  margin-bottom: 8px;
+  background: transparent;
+}
+
+.phrase-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.phrase-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+}
+
+.phrase-chip:hover {
+  border-color: var(--accent);
+}
+
+.phrase-chip.selected {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.12);
+}
+
 /* Viral bites horizontal scroll */
 .bites-scroll {
   display: flex;

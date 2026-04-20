@@ -149,9 +149,11 @@ def analyze_emotions_gemini(texts: list[str], max_texts: int = 20) -> list[dict]
         f"Texts:\n{numbered}"
     )
 
+    from utils.llm_retry import sync_retry_llm
+
     model = GoogleModel("gemini-2.5-flash-lite", api_key=api_key)
     agent = Agent(model)
-    result = agent.run_sync(prompt)
+    result = sync_retry_llm(lambda: agent.run_sync(prompt))
 
     # Parse the JSON from the response
     raw = result.output
