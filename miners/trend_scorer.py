@@ -36,6 +36,12 @@ _STOPWORDS = frozenset(
 )
 
 _MIN_WORD_LEN = 4  # ignore words shorter than this
+_GENERIC_TREND_WORDS = frozenset(
+    {
+        "stage", "technical", "issue", "festival", "performance", "crowd",
+        "music", "artist", "lineup", "weekend", "show", "set", "vibe",
+    }
+)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -92,9 +98,17 @@ def _cluster_posts(posts: list[dict]) -> dict[str, list[dict]]:
             cluster_posts.append(posts[idx])
             word_counts.update(_tokenize(posts[idx].get("title", "")))
 
-        # Pick top 2-3 words as the cluster name
-        top_words = [w for w, _ in word_counts.most_common(3)]
-        name = " ".join(top_words) if top_words else f"cluster_{cid}"
+        # Prefer an event-like title for naming to avoid generic labels.
+        top_post = max(cluster_posts, key=lambda p: p.get("score", 0), default={})
+        top_title = (top_post.get("title", "") or "").strip()
+        title_tokens = [w for w in _tokenize(top_title) if w not in _GENERIC_TREND_WORDS]
+
+        if top_title and len(title_tokens) >= 2:
+            words = top_title.split()
+            name = " ".join(words[:8]).strip(" -:;,.!?")
+        else:
+            top_words = [w for w, _ in word_counts.most_common(6) if w not in _GENERIC_TREND_WORDS]
+            name = " ".join(top_words[:3]) if top_words else f"cluster_{cid}"
         named_clusters[name] = cluster_posts
 
     return named_clusters

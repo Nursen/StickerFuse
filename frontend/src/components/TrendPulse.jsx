@@ -278,7 +278,8 @@ function TrendPulse({ onNavigateStudio }) {
   }
 
   const handleMakeStickers = (trend) => {
-    setSelectedTrend(trend)
+    const parent = searchTopic.trim() || undefined
+    setSelectedTrend(parent ? { ...trend, parent_topic: parent } : { ...trend })
     onNavigateStudio()
   }
 

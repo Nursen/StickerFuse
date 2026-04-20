@@ -24,8 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+from utils.llm_retry import is_transient_gemini_error, sync_retry_llm
+
 # Nano Banana image gen models available on this API key
 IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+IMAGE_MODEL_FALLBACK = os.getenv("GEMINI_IMAGE_MODEL_FALLBACK", "").strip()
 
 # Default output directory
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "outputs" / "stickers"
@@ -63,13 +66,26 @@ def generate_sticker_image(
         "no complex backgrounds, strong clean edges suitable for printing, high contrast."
     )
 
-    response = client.models.generate_content(
-        model=model,
-        contents=full_prompt,
-        config=types.GenerateContentConfig(
-            response_modalities=["TEXT", "IMAGE"],
-        ),
-    )
+    def _call(m: str):
+        return client.models.generate_content(
+            model=m,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            ),
+        )
+
+    try:
+        response = sync_retry_llm(lambda: _call(model))
+    except Exception as e:
+        if (
+            IMAGE_MODEL_FALLBACK
+            and IMAGE_MODEL_FALLBACK != model
+            and is_transient_gemini_error(e)
+        ):
+            response = sync_retry_llm(lambda: _call(IMAGE_MODEL_FALLBACK))
+        else:
+            raise
 
     # Find the image part in the response
     image_saved = False

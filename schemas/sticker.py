@@ -38,3 +38,11 @@ class StickerIdeaSet(BaseModel):
 
     viral_bite: str = Field(description="The viral bite these sticker ideas are based on")
     ideas: list[StickerIdea] = Field(description="Generated sticker concepts (typically 3-5 per bite)")
+
+
+class PhraseOptionSet(BaseModel):
+    """Distinct phrase options before styling (Studio phrase-focused step)."""
+
+    phrases: list[str] = Field(
+        description="Exactly 5 distinct short sticker phrases (different wordings, same cultural moment)"
+    )

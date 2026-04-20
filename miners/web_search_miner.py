@@ -31,7 +31,10 @@ from pydantic_ai.providers.google import GoogleProvider
 
 # Load env from project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
 load_dotenv(_PROJECT_ROOT / ".env")
+
+from utils.llm_retry import sync_retry_llm
 
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
@@ -192,7 +195,7 @@ def mine_web_search(query: str, *, model_name: str = DEFAULT_MODEL) -> dict:
         f"Focus on content from the last 7 days. Today is {now.strftime('%B %d, %Y')}."
     )
 
-    run = agent.run_sync(user_prompt)
+    run = sync_retry_llm(lambda: agent.run_sync(user_prompt))
     messages = run.all_messages()
 
     # Get grounding URLs from the raw message exchange

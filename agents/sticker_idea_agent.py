@@ -18,7 +18,8 @@ from pydantic_ai.providers.google import GoogleProvider
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from schemas.sticker import StickerIdeaSet
+from schemas.sticker import PhraseOptionSet, StickerIdeaSet
+from utils.llm_retry import sync_retry_llm
 
 load_dotenv()
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -26,6 +27,11 @@ DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 SYSTEM_PROMPT = """\
 You are a creative director for a sticker design studio that turns viral internet moments into
 sellable merchandise. You understand both internet culture AND visual design.
+
+When the user provides a PARENT TOPIC (e.g. a TV show, festival, artist, game), you MUST keep designs
+anchored in that universe: use its recognizable aesthetic, color grading, fashion era, and
+character archetypes. For example, if the parent is a TV drama, reference how characters actually
+look and dress on that show — do not reduce the idea to a generic literal reading of a meme phrase.
 
 Given a viral bite (a quote, catchphrase, lyric, or meme concept), generate 3-5 distinct sticker
 concepts. Each concept should be a different creative interpretation:
@@ -36,10 +42,12 @@ concepts. Each concept should be a different creative interpretation:
 - Consider what sells on Redbubble and Etsy — clean designs, readable text, strong silhouettes
 
 For text-only stickers, focus on typography and lettering style.
-For image stickers, describe the visual in enough detail for an AI image generator.
+For image stickers, describe the visual in enough detail for an AI image generator (who/what is on
+the sticker, pose, wardrobe cues tied to the parent topic when relevant).
 For text+image combos, describe how text and image interact.
 
-Suggest specific color palettes that match the vibe of the viral moment.\
+Suggest specific color palettes that match the vibe of the viral moment AND the parent topic when one
+is given.\
 """
 
 
@@ -57,18 +65,60 @@ sticker_idea_agent = Agent(
     output_type=StickerIdeaSet,
 )
 
+PHRASE_SYSTEM_PROMPT = """\
+You propose short text options for print-on-demand stickers (1–6 words each when possible).
+
+Rules:
+- Output exactly 5 phrases.
+- Each phrase must be DISTINCT (different wording, angle, or tone — never the same line repeated).
+- When a parent topic is given (TV show, game, artist, event), phrases should feel native to that world.
+- Phrases are the product copy only — not art direction (no "in kawaii style").
+"""
+
+
+phrase_options_agent = Agent(
+    model=_build_model(),
+    system_prompt=PHRASE_SYSTEM_PROMPT,
+    output_type=PhraseOptionSet,
+)
+
 
 def generate_sticker_ideas(
     viral_bite: str,
     context: str = "",
 ) -> StickerIdeaSet:
     """Generate sticker concepts from a viral bite."""
-    parts = [f'Viral bite: "{viral_bite}"']
+    parts = [f'Viral bite / moment: "{viral_bite}"']
     if context:
-        parts.append(f"Cultural context: {context}")
-    parts.append("Generate 3-5 distinct sticker design concepts for this viral moment.")
+        parts.append(
+            "Cultural + parent context (franchise, event, aesthetic — use this to ground visuals): "
+            f"{context}"
+        )
+    parts.append(
+        "Generate 3-5 distinct sticker design concepts. If a parent franchise/topic is named in "
+        "context, every visual_description must reflect that world's look and characters, not a "
+        "generic interpretation of the words alone."
+    )
 
-    result = sticker_idea_agent.run_sync("\n\n".join(parts))
+    result = sync_retry_llm(lambda: sticker_idea_agent.run_sync("\n\n".join(parts)))
+    return result.output
+
+
+def suggest_phrase_variants(
+    parent_topic: str,
+    moment: str,
+    trend_context: str = "",
+) -> PhraseOptionSet:
+    """Return 5 distinct phrase options for the Studio phrase-first step."""
+    parts = [f"Trending moment / meme label to riff on: \"{moment}\""]
+    if parent_topic.strip():
+        parts.append(
+            f"Parent topic / franchise (keep tone and references in-universe): {parent_topic.strip()}"
+        )
+    if trend_context.strip():
+        parts.append(f"Signals and evidence: {trend_context.strip()}")
+    parts.append("Produce exactly 5 distinct sticker phrases as specified.")
+    result = sync_retry_llm(lambda: phrase_options_agent.run_sync("\n\n".join(parts)))
     return result.output
 
 

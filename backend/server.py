@@ -29,7 +29,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 load_dotenv(PROJECT_ROOT / ".env")
 
-from backend.chat_agent import get_agent, _run_in_thread  # noqa: E402
+from pydantic_ai.messages import ToolReturnPart  # noqa: E402
+
+from backend.chat_agent import run_chat_with_retries, _run_in_thread  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # App
@@ -100,24 +102,10 @@ async def chat(req: ChatRequest):
 
         user_prompt = "\n\n".join(parts)
 
-        # Run the agent (async, lazy-built on first call)
-        agent = get_agent()
-        result = await agent.run(user_prompt)
+        # Run the agent with retries + optional fallback model (see .env)
+        result = await run_chat_with_retries(user_prompt)
 
-        # Extract tool call info from the run messages for the frontend
-        tool_results: list[ToolResult] = []
-        for msg in result.all_messages():
-            msg_dict = msg.model_dump() if hasattr(msg, "model_dump") else {}
-            kind = msg_dict.get("kind", "")
-
-            if kind == "tool-return":
-                tool_results.append(
-                    ToolResult(
-                        tool_name=msg_dict.get("tool_name", "unknown"),
-                        args={},
-                        result=_truncate(msg_dict.get("content", ""), max_len=2000),
-                    )
-                )
+        tool_results = _collect_tool_results_from_run(result)
 
         return ChatResponse(
             reply=result.output,
@@ -129,6 +117,111 @@ async def chat(req: ChatRequest):
             reply=f"Something went wrong: {exc}",
             tool_results=[],
         )
+
+
+# ---------------------------------------------------------------------------
+# Sticker Studio — direct pipeline (no chat agent; guaranteed JSON for the UI)
+# ---------------------------------------------------------------------------
+
+
+class StudioBrainstormRequest(BaseModel):
+    parent_topic: str = ""
+    moment: str
+    trend_context: str = ""
+    mode: str = "auto"  # auto | phrase | visual
+
+
+class StudioPhrasesRequest(BaseModel):
+    parent_topic: str = ""
+    moment: str
+    trend_context: str = ""
+
+
+class StudioImageRequest(BaseModel):
+    prompt: str
+    parent_topic: str = ""
+    moment: str = ""
+
+
+def _studio_brainstorm_context(req: StudioBrainstormRequest) -> str:
+    bits: list[str] = []
+    if req.parent_topic.strip():
+        bits.append(f"Parent topic / franchise: {req.parent_topic.strip()}")
+    if req.trend_context.strip():
+        bits.append(f"Signals and evidence: {req.trend_context.strip()}")
+    if req.mode == "visual":
+        bits.append(
+            "Emphasize image-led sticker concepts; tie visuals to the parent topic's aesthetic, "
+            "era, and recognizable character types — not generic stock imagery."
+        )
+    elif req.mode == "phrase":
+        bits.append(
+            "Emphasize text-forward stickers with varied typography treatments; ground copy in the "
+            "parent topic when provided."
+        )
+    else:
+        bits.append(
+            "Balance phrase-led and visual-led concepts; ground all visuals in the parent topic when "
+            "it is provided."
+        )
+    return "\n".join(bits)
+
+
+@app.post("/api/studio/brainstorm")
+async def studio_brainstorm(req: StudioBrainstormRequest):
+    """Run sticker idea generation directly — returns structured ideas for the React Studio."""
+    from agents.sticker_idea_agent import generate_sticker_ideas
+
+    if not req.moment.strip():
+        return JSONResponse({"status": "error", "error": "moment is required"}, status_code=400)
+    try:
+        ctx = _studio_brainstorm_context(req)
+        out = await _run_in_thread(generate_sticker_ideas, req.moment.strip(), ctx)
+        data = out.model_dump()
+        return {"status": "ok", "data": data}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/studio/suggest-phrases")
+async def studio_suggest_phrases(req: StudioPhrasesRequest):
+    """Return 5 distinct phrase options for phrase-focused mode."""
+    from agents.sticker_idea_agent import suggest_phrase_variants
+
+    if not req.moment.strip():
+        return JSONResponse({"status": "error", "error": "moment is required"}, status_code=400)
+    try:
+        out = await _run_in_thread(
+            suggest_phrase_variants,
+            req.parent_topic,
+            req.moment.strip(),
+            req.trend_context,
+        )
+        return {"status": "ok", "phrases": out.phrases}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/studio/generate-image")
+async def studio_generate_image(req: StudioImageRequest):
+    """Generate a sticker PNG and return filename for the Studio gallery."""
+    from agents.image_gen_agent import generate_sticker_image
+
+    if not req.prompt.strip():
+        return JSONResponse({"status": "error", "error": "prompt is required"}, status_code=400)
+    try:
+        full = req.prompt.strip()
+        if req.parent_topic.strip() or req.moment.strip():
+            full = (
+                f"{full}\n\n"
+                f"Context — parent topic: {req.parent_topic or 'n/a'}; "
+                f"moment: {req.moment or 'n/a'}"
+            )
+        path = await _run_in_thread(generate_sticker_image, full)
+        name = path.name
+        return {"status": "ok", "filename": name, "url": f"/stickers/{name}"}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
@@ -320,11 +413,38 @@ async def top_trending():
         return {"status": "error", "error": str(exc)}
 
 
-def _truncate(text: str, max_len: int = 2000) -> str:
+def _truncate(text: str, max_len: int = 20000) -> str:
     """Truncate long tool outputs so we don't blow up the response."""
     if len(text) <= max_len:
         return text
     return text[:max_len] + "... (truncated)"
+
+
+def _collect_tool_results_from_run(run_result) -> list[ToolResult]:
+    """Extract tool return payloads from PydanticAI v2 message history.
+
+    Tool outputs live on ModelRequest.parts as ToolReturnPart, not as top-level
+    messages with kind 'tool-return'.
+    """
+    out: list[ToolResult] = []
+    for msg in run_result.all_messages():
+        parts = getattr(msg, "parts", None)
+        if not parts:
+            continue
+        for part in parts:
+            if isinstance(part, ToolReturnPart):
+                try:
+                    body = part.model_response_str()
+                except Exception:
+                    body = str(part.content)
+                out.append(
+                    ToolResult(
+                        tool_name=part.tool_name,
+                        args={},
+                        result=_truncate(body, max_len=20000),
+                    )
+                )
+    return out
 
 
 # ---------------------------------------------------------------------------
