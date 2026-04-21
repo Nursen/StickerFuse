@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL_LITE", "gemini-2.0-flash-lite")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL_LITE", "gemini-2.5-flash-lite")
 
 
 class StickerVariation(BaseModel):
