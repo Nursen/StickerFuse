@@ -99,7 +99,7 @@ export function TrendProvider({ children }) {
     const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/ideas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(idea),
+      body: JSON.stringify({ idea }),
     })
     if (!res.ok) throw new Error(`${res.status}`)
     await refreshActivePack()
