@@ -90,7 +90,7 @@ def _get_agent(name: str) -> Agent:
         )
     elif name == "opps_favorites":
         agent = Agent(
-            model=GoogleModel(_FLASH_LITE, provider=provider),
+            model=GoogleModel(_FLASH, provider=provider),
             system_prompt=_FAVORITES_PROMPT,
             output_type=list[StickerOpportunity],
             model_settings=GoogleModelSettings(temperature=0.5, max_tokens=3072),
@@ -108,7 +108,7 @@ def _get_agent(name: str) -> Agent:
         )
     elif name == "opps_deep":
         agent = Agent(
-            model=GoogleModel(_FLASH_LITE, provider=provider),
+            model=GoogleModel(_FLASH, provider=provider),
             system_prompt=_DEEP_CUTS_PROMPT,
             output_type=list[StickerOpportunity],
             model_settings=GoogleModelSettings(temperature=0.7, max_tokens=3072),
@@ -117,7 +117,7 @@ def _get_agent(name: str) -> Agent:
     elif name == "opportunities":
         # Legacy single-prompt (used by remix)
         agent = Agent(
-            model=GoogleModel(_FLASH_LITE, provider=provider),
+            model=GoogleModel(_FLASH, provider=provider),
             system_prompt=_MASHUPS_PROMPT,
             output_type=list[StickerOpportunity],
             model_settings=GoogleModelSettings(temperature=0.8, max_tokens=4096),
@@ -212,18 +212,18 @@ THEN: Smash those current phrases into the fandom's specific characters, \
 scenes, and moments. The humor comes from the CONTRAST — high culture meets \
 internet brain, period drama meets shitposting.
 
-Examples of GREAT collisions:
-- "Simp for the Bee" (fandom symbol + simp culture)
-- "Got That Regency Rizz" (era + slang = anachronism humor)
-- "Let Benedict Cook" (character + meme format)
-- "The Ton Is Looking Sus" (world-building term + Among Us slang)
-- "No Icks, Just Bees" (fandom icon + dating discourse)
-- "Main Character Energy" on an iconic character pose
+Examples of GREAT collisions across different topics:
+- TV: "Let [Character] Cook" (character doing their thing + meme format)
+- Gaming: "[Game Item] Is My Emotional Support" (item + therapy speak)
+- Brand: "No Icks, Just [Brand Icon]" (brand symbol + dating discourse)
+- Event: "[Event] Was My Roman Empire" (experience + trend)
+- Place: "[Place] Gave Me My Villain Origin Story" (shared experience + meme)
+- Subculture: "Unhinged [Subculture] Energy" (identity + energy format)
 
 What makes these work:
-- The fandom element is SPECIFIC (not generic — a character, a scene, a symbol)
-- The internet element is CURRENT (search for what's trending NOW)
-- The collision is FUNNY because of the contrast between the two worlds
+- The topic element is SPECIFIC to THIS universe (a character, a scene, an icon — not generic)
+- The internet element is CURRENT (search for what's trending NOW, not last year)
+- The collision is FUNNY because of the contrast or unexpected pairing
 - The text is SHORT enough to read on a 3-inch sticker
 
 Generate 6 concepts. Each MUST name the specific fandom element AND the \
