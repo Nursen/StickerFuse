@@ -31,8 +31,15 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
   const [selectedLayout, setSelectedLayout] = useState('text_and_image')
   const [selectedColorMood, setSelectedColorMood] = useState('')
   const [visualDirection, setVisualDirection] = useState('')
-  const [allVersions, setAllVersions] = useState([]) // {filename, prompt, timestamp}[]
+  const [allVersions, setAllVersions] = useState([]) // {filename, prompt, label, timestamp}[]
   const [selectedVersion, setSelectedVersion] = useState(null)
+
+  // Sync visual direction with selected version's prompt
+  useEffect(() => {
+    if (selectedVersion !== null && allVersions[selectedVersion]?.prompt) {
+      setVisualDirection(allVersions[selectedVersion].prompt)
+    }
+  }, [selectedVersion]) // eslint-disable-line react-hooks/exhaustive-deps
   const [refinement, setRefinement] = useState('')
   const [generating, setGenerating] = useState(false)
   const [notice, setNotice] = useState('')
@@ -167,12 +174,18 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
       })
       const data = await res.json()
       if (data?.filename) {
-        const newVersion = { filename: data.filename, prompt: newPrompt, timestamp: new Date().toISOString() }
+        const newVersion = {
+          filename: data.filename,
+          prompt: newPrompt,
+          label: `Refined: ${refinement.trim().slice(0, 30)}`,
+          timestamp: new Date().toISOString(),
+        }
         setAllVersions(prev => {
           const next = [...prev, newVersion]
           setSelectedVersion(next.length - 1)
           return next
         })
+        setVisualDirection(newPrompt)
         setNotice('Refinement added as new version.')
       }
     } catch {
