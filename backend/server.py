@@ -65,9 +65,20 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ChatContext(BaseModel):
+    active_pack: str = ""  # pack name
+    current_view: str = ""  # "home" | "ideas" | "studio" | "pack-view"
+    current_idea: str = ""  # idea text being worked on in Studio
+    current_sticker_prompt: str = ""  # the visual direction / prompt in Studio
+    idea_bank: list[str] = Field(default_factory=list)  # idea texts in bank
+    stickers_in_pack: int = 0
+    pack_topic: str = ""
+
+
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=2000)
     history: list[ChatMessage] = []
+    context: ChatContext | None = None
 
 
 class ToolResult(BaseModel):
@@ -96,9 +107,32 @@ async def chat(req: ChatRequest):
     """Run the PydanticAI chat agent with StickerFuse tools."""
 
     try:
-        # Build a single user prompt that includes conversation history for context
+        # Build context block from app state
+        context_parts = []
+        if req.context:
+            ctx = req.context
+            if ctx.active_pack:
+                context_parts.append(f"Active pack: {ctx.active_pack}")
+            if ctx.pack_topic:
+                context_parts.append(f"Pack topic: {ctx.pack_topic}")
+            if ctx.current_view:
+                context_parts.append(f"User is on: {ctx.current_view} view")
+            if ctx.current_idea:
+                context_parts.append(f"Working on idea: {ctx.current_idea}")
+            if ctx.current_sticker_prompt:
+                context_parts.append(f"Current visual direction: {ctx.current_sticker_prompt}")
+            if ctx.idea_bank:
+                context_parts.append(f"Ideas in bank: {', '.join(ctx.idea_bank[:10])}")
+            if ctx.stickers_in_pack:
+                context_parts.append(f"Stickers saved to pack: {ctx.stickers_in_pack}")
+
+        context_block = "\n".join(context_parts)
+
+        # Build prompt: context + recent history + current message
         parts: list[str] = []
-        for msg in req.history:
+        if context_block:
+            parts.append(f"[Current app state]\n{context_block}\n")
+        for msg in req.history[-3:]:  # only last 3 history messages
             prefix = "User" if msg.role == "user" else "Assistant"
             parts.append(f"{prefix}: {msg.content}")
         parts.append(f"User: {req.message}")

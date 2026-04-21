@@ -1,12 +1,43 @@
 # StickerFuse
 
-**Viral Moments → Sticker Designs**
+**Fandom DNA x Internet Culture = Sticker Packs**
 
-AI-powered social listening + sticker design pipeline. Detects trending cultural moments across 6+ platforms, verifies them with hard metrics, and generates print-ready sticker designs — all from a single dashboard.
+AI-powered sticker design pipeline. Search any fandom or topic, brainstorm concepts grounded in real Reddit/YouTube/Wikipedia data, generate sticker variations, and export print-ready packs.
 
 Built for MGT 575 (Generative AI & Social Media) at Yale SOM.
 
 ---
+
+<!--
+## Cleanup Notes (Dead Code Candidates)
+
+The following files may be candidates for removal or refactoring:
+
+- `run_pipeline.py` — CLI entry point from the old linear pipeline (mine → subtopics →
+  viral bites → sticker ideas → design). Still works standalone but is not used by the
+  web app. The web app's pack-centric flow replaced this workflow.
+- `agents/design_agent.py` — Only used via `chat_agent.py` tool. The Studio now uses
+  `variation_agent.py` → `image_gen_agent.py` directly. Kept for chat backward compat.
+- `agents/subtopic_agent.py` — Only used via `chat_agent.py` tool. Not part of the main
+  Studio/IdeaBank flow.
+- `agents/viral_bite_agent.py` — Only used via `chat_agent.py` tool. Same as above.
+- `miners/tiktok_miner.py` — Playwright-based TikTok scraper. Not imported by server or
+  trend_scorer. Works standalone via CLI only.
+- `miners/trends_mcp.py` — Trends MCP client. Not imported by server or trend_scorer.
+  Works standalone via CLI only.
+- `miners/velocity_forecast.py` — Imported by no other module (not even trend_scorer).
+  Appears fully orphaned.
+- `backend/sticker_library.py` — Earlier library approach, still has endpoints in server
+  but the Pack system (`pack_manager.py`) is the primary workflow now.
+- `frontend/src/components/TrendPulse.jsx` — The old "Trend Pulse" tab. Still rendered in
+  App.jsx but the main user journey now starts from PackHome.
+- `frontend/src/components/CommunityView.jsx` — Beta community mining view. Rendered in
+  App.jsx but lightly used.
+- `frontend/src/components/StickerViewer.jsx` — Sticker viewing component. Check if still
+  referenced or superseded by PackView.
+- `frontend/src/components/SaveToLibraryButton.jsx` — Tied to the old sticker_library
+  system. May be superseded by pack-based saving.
+-->
 
 ## Quick Start
 
@@ -22,7 +53,7 @@ pip install -r requirements.txt
 # Frontend deps
 cd frontend && npm install && cd ..
 
-# Playwright (for TikTok mining)
+# Playwright (for TikTok mining — optional)
 playwright install chromium
 ```
 
@@ -62,52 +93,47 @@ Open **http://localhost:5173**
 
 ## How It Works
 
-### Three Modes
-
-| Mode | What it does | Status |
-|------|-------------|--------|
-| **Trend Pulse** | Cross-platform trend detection with verified metrics | ✅ Live |
-| **Sticker Studio** | Viral bite → concept → generated sticker PNG | ✅ Live |
-| **Community Mining** | Paste Discord/Slack chat to find niche in-jokes | 🧪 Beta |
-
-### The Trend Intelligence Pipeline
+### User Journey
 
 ```
-Reddit ─────┐
-Google Trends┤
-YouTube ─────┤
-Wikipedia ───┤──→ Trend Scorer ──→ Cross-Platform ──→ Dashboard
-TikTok ──────┤      │                Correlation
-Web Search ──┤      │
-Trends MCP ──┘      ▼
-               ┌─────────────┐
-               │ VADER       │ sentiment analysis (free)
-               │ Poisson η   │ statistical spike detection (free)
-               │ Velocity    │ "still trending in 3 days?" (free)
-               └─────────────┘
+Create Pack → Idea Bank (manual + AI brainstorm) → Studio (generate + refine) → Pack View (export)
 ```
 
-### What Makes a Trend "Verified"
+### Three Ways to Add Ideas
 
-Every trend in StickerFuse comes with:
+| Method | How | What happens |
+|--------|-----|-------------|
+| **Type your own** | Manual input in Idea Bank | Add any concept directly |
+| **AI Brainstorm** | Search a fandom/topic | Get ~15 concepts grounded in Reddit, YouTube, and Wikipedia data |
+| **Community Mining** (Beta) | Paste Discord/Slack chat logs | Extract niche in-jokes and community language |
 
-- **Spike score** — how far above baseline (Poisson η statistic)
-- **Engagement velocity** — score per hour
-- **Cross-platform confirmation** — how many sources agree (Reddit, Google, YouTube, Wikipedia, etc.)
-- **Confidence rating** — HIGH (3+ platforms, η > 1.5), MEDIUM, LOW
-- **Sentiment analysis** — emotional intensity via VADER
-- **Velocity forecast** — will it still be trending in 72 hours?
-- **Evidence URLs** — actual posts/pages backing every claim
+### The Studio
 
-No trend is surfaced without data to support it.
+Two-column creative workspace:
 
-### The Sticker Creation Pipeline
+- **Left panel**: edit text, art style tiles, layout picker, visual direction, color mood
+- **Right panel**: generate 3 distinct variations (AI creates different creative directions), refine, compare, save to pack
+
+### The AI Pipeline
 
 ```
-Trend → Viral Bites → Sticker Concepts → Design Spec → Generated PNG
-         (quotes,       (3-5 variations    (image gen     (Gemini Nano
-          phrases)       per bite)           prompt)        Banana)
+Reddit + YouTube + Wikipedia mining
+        ↓
+Community synthesis
+        ↓
+Merch ideation agent (fandom DNA × internet culture)
+        ↓
+Variation agent (3 distinct creative directions)
+        ↓
+Image generation (Gemini Nano Banana)
+        ↓
+Sticker PNG
 ```
+
+### Marketing Kit (Beta)
+
+- **Comment drafter** — reads thread tone, writes natural comments
+- **Listing generator** — Redbubble/Etsy optimized titles, descriptions, 13 tags
 
 ---
 
@@ -115,90 +141,125 @@ Trend → Viral Bites → Sticker Concepts → Design Spec → Generated PNG
 
 ```
 StickerFuse/
-├── schemas/                 # Pydantic models
-│   ├── trend.py             # TrendSignal (34 fields), TrendReport
-│   ├── topic.py             # Subtopic discovery
-│   ├── viral.py             # Viral bites
-│   ├── sticker.py           # Sticker concepts
-│   ├── design.py            # Image gen prompts
-│   ├── config.py            # Community config
-│   └── community.py         # Community mining
+├── schemas/                     # Pydantic models
+│   ├── trend.py                 # TrendSignal (34 fields), TrendReport
+│   ├── topic.py                 # Subtopic discovery
+│   ├── viral.py                 # Viral bites
+│   ├── sticker.py               # Sticker concepts
+│   ├── design.py                # Image gen prompts
+│   ├── config.py                # Community config
+│   └── community.py             # Community mining
 │
-├── miners/                  # Social listening agents
-│   ├── reddit_miner.py      # Reddit .json (no API key needed)
-│   ├── trends_miner.py      # Google Trends via pytrends
-│   ├── youtube_miner.py     # YouTube Data API + RSS fallback
-│   ├── wikipedia_miner.py   # Wikimedia Pageviews API
-│   ├── tiktok_miner.py      # Playwright scraping
-│   ├── web_search_miner.py  # Gemini grounded web search
-│   ├── trends_mcp.py        # Trends MCP (12+ platforms)
-│   ├── community_miner.py   # Text analysis for Discord/Slack
-│   ├── sentiment.py         # VADER + Gemini Flash-Lite emotions
-│   ├── spike_detector.py    # Poisson-based spike detection
-│   ├── velocity_forecast.py # Linear regression forecasting
-│   └── trend_scorer.py      # Cross-platform correlation engine
+├── miners/                      # Social listening data sources
+│   ├── reddit_miner.py          # Reddit .json (no API key needed)
+│   ├── trends_miner.py          # Google Trends via pytrends
+│   ├── youtube_miner.py         # YouTube Data API + RSS fallback
+│   ├── wikipedia_miner.py       # Wikimedia Pageviews API
+│   ├── tiktok_miner.py          # Playwright scraping (CLI only)
+│   ├── web_search_miner.py      # Gemini grounded web search
+│   ├── trends_mcp.py            # Trends MCP 12+ platforms (CLI only)
+│   ├── community_miner.py       # Text analysis for Discord/Slack
+│   ├── sentiment.py             # VADER + Gemini Flash-Lite emotions
+│   ├── spike_detector.py        # Poisson-based spike detection
+│   ├── velocity_forecast.py     # Linear regression forecasting
+│   └── trend_scorer.py          # Cross-platform correlation engine
 │
-├── agents/                  # PydanticAI agents (Gemini)
-│   ├── subtopic_agent.py    # Trend analyst (data-driven, never invents)
-│   ├── viral_bite_agent.py  # Extracts quotable moments
-│   ├── sticker_idea_agent.py # Generates design concepts
-│   ├── design_agent.py      # Creates image gen prompts
-│   ├── image_gen_agent.py   # Generates PNGs (Nano Banana)
-│   └── community_agent.py   # Interprets community patterns
+├── agents/                      # PydanticAI agents (Gemini)
+│   ├── merch_ideation_agent.py  # Fandom DNA × internet culture ideation
+│   ├── variation_agent.py       # 3 distinct creative directions per concept
+│   ├── image_gen_agent.py       # Generates PNGs (Nano Banana)
+│   ├── moment_detector.py       # Detects viral moments from trend data
+│   ├── community_agent.py       # Interprets community patterns
+│   ├── comment_drafter.py       # (planned) Contextual comment drafting
+│   ├── listing_generator.py     # (planned) Redbubble/Etsy listing gen
+│   ├── sticker_idea_agent.py    # Generates design concepts
+│   ├── design_agent.py          # Creates image gen prompts (chat only)
+│   ├── subtopic_agent.py        # Trend analyst (chat only)
+│   └── viral_bite_agent.py      # Extracts quotable moments (chat only)
 │
-├── backend/                 # FastAPI server
-│   ├── server.py            # API endpoints + static file serving
-│   └── chat_agent.py        # Chat orchestrator (12 tools)
+├── backend/                     # FastAPI server
+│   ├── server.py                # API endpoints + static file serving
+│   ├── chat_agent.py            # Chat orchestrator (12 tools)
+│   ├── pack_manager.py          # Pack CRUD + idea/sticker management
+│   └── sticker_library.py       # Legacy sticker library
 │
-├── frontend/                # React dashboard (Vite)
+├── frontend/                    # React dashboard (Vite)
 │   └── src/
-│       ├── App.jsx          # 3-tab layout
-│       ├── components/
-│       │   ├── TrendPulse.jsx    # Trend cards with metrics
-│       │   ├── StickerStudio.jsx # Creation pipeline
-│       │   ├── CommunityView.jsx # Paste-to-analyze (beta)
-│       │   ├── ChatSidebar.jsx   # Collapsible chat
-│       │   ├── Message.jsx       # Chat messages
-│       │   └── ToolResult.jsx    # Expandable tool results
-│       └── App.css
+│       ├── App.jsx              # Tab layout + pack routing
+│       ├── App.css
+│       ├── main.jsx
+│       ├── context/
+│       │   └── TrendContext.jsx  # Shared state provider
+│       └── components/
+│           ├── PackHome.jsx         # Create & manage packs
+│           ├── IdeaBank.jsx         # Manual + AI brainstorm ideas
+│           ├── StickerStudio.jsx    # Two-column generate + refine
+│           ├── PackView.jsx         # View pack contents, export ZIP
+│           ├── ChatSidebar.jsx      # Collapsible chat assistant
+│           ├── TrendPulse.jsx       # Trend cards with metrics
+│           ├── CommunityView.jsx    # Paste-to-analyze (beta)
+│           ├── StickerViewer.jsx    # Sticker display
+│           ├── SaveToLibraryButton.jsx # Save to library
+│           ├── Message.jsx          # Chat messages
+│           └── ToolResult.jsx       # Expandable tool results
 │
-├── .env.example             # API key template
-├── requirements.txt         # Python dependencies
-├── PROPOSAL.md              # Original project proposal
-└── run_pipeline.py          # CLI entry point
+├── utils/
+│   └── llm_retry.py             # Gemini retry logic with backoff
+│
+├── .env.example                 # API key template
+├── requirements.txt             # Python dependencies
+├── run_pipeline.py              # CLI entry point (legacy pipeline)
+└── PROPOSAL.md                  # Original project proposal
 ```
+
+> **Note:** `agents/comment_drafter.py`, `agents/listing_generator.py`, and `miners/semantic_clusterer.py` are referenced in the design but not yet created. The semantic clusterer lives on a separate branch.
 
 ---
 
-## CLI Usage
+## API Reference
 
-Every miner and agent can be used standalone from the command line:
+### Pack Management
+```
+POST   /api/packs                  — create pack
+GET    /api/packs                  — list packs
+GET    /api/packs/:id              — get pack
+PATCH  /api/packs/:id              — update pack
+DELETE /api/packs/:id              — delete pack
+POST   /api/packs/:id/ideas        — add idea
+POST   /api/packs/:id/ideas/batch  — add multiple ideas
+DELETE /api/packs/:id/ideas/:id    — remove idea
+POST   /api/packs/:id/stickers     — add sticker
+DELETE /api/packs/:id/stickers/:fn — remove sticker
+GET    /api/packs/:id/export       — download ZIP
+```
 
-```bash
-# Mine data
-python -m miners.reddit_miner --subreddits taylorswift nba --limit 20
-python -m miners.trends_miner "Taylor Swift" "NBA playoffs"
-python -m miners.youtube_miner "Taylor Swift" --limit 10
-python -m miners.wikipedia_miner "Taylor Swift" --limit 5
-python -m miners.tiktok_miner "Taylor Swift" --headed  # opens browser
-python -m miners.web_search_miner "Taylor Swift trending moments"
+### Studio
+```
+POST   /api/studio/variations      — 3 distinct creative directions
+POST   /api/studio/generate-image  — generate sticker PNG
+POST   /api/studio/brainstorm      — sticker concept generation
+POST   /api/studio/suggest-phrases — phrase variants
+DELETE /api/studio/sticker/:fn     — delete sticker file
+```
 
-# Analyze
-python -m miners.community_miner --file my_discord_export.txt
+### Intelligence
+```
+POST   /api/ideate                 — merch ideation (fandom x internet culture)
+POST   /api/analyze                — cross-platform trend analysis
+GET    /api/trending               — top trends (cached)
+POST   /api/cluster                — semantic clustering
+```
 
-# Run agents
-python -m agents.subtopic_agent "Taylor Swift" --reddit-data output/reddit.json
-python -m agents.viral_bite_agent "Eras Tour finale" --context "Taylor Swift"
-python -m agents.sticker_idea_agent "I'm the problem, it's me"
-python -m agents.image_gen_agent "kawaii cat with heart, sticker design"
+### Marketing
+```
+POST   /api/marketing/draft-comment     — contextual comment drafting
+POST   /api/marketing/generate-listing  — Redbubble/Etsy listing
+```
 
-# Full pipeline CLI
-python run_pipeline.py mine-reddit --subreddits taylorswift --limit 10
-python run_pipeline.py mine-trends "Taylor Swift"
-python run_pipeline.py subtopics "Taylor Swift"
-python run_pipeline.py viral-bites "Eras Tour finale"
-python run_pipeline.py sticker-ideas "I'm the problem, it's me"
-python run_pipeline.py design "kawaii cat with problem text" --style kawaii
+### Chat & Health
+```
+POST   /api/chat                   — context-aware chat assistant
+GET    /api/health                 — health check
 ```
 
 ---
@@ -238,6 +299,6 @@ python run_pipeline.py design "kawaii cat with problem text" --style kawaii
 - **Stephanie Duernas**
 - **Theo Pedas**
 
-Yale SOM — MGT 575: Generative AI and Social Media
+Yale SOM -- MGT 575: Generative AI and Social Media
 
-Presentations: April 23 – May 5, 2026
+Presentations: April 23 -- May 5, 2026

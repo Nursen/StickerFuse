@@ -32,12 +32,9 @@ export function TrendProvider({ children }) {
   // The idea currently being designed in Studio
   const [studioIdea, setStudioIdea] = useState(null)
 
-  // Chat
-  const [messages, setMessages] = useState(() => loadState('messages', []))
+  // Chat — ephemeral per session, no localStorage persistence
+  const [messages, setMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
-
-  // Persist messages
-  useEffect(() => { saveState('messages', messages) }, [messages])
 
   // --- Pack API helpers ---
   const fetchPacks = useCallback(async () => {
@@ -165,11 +162,31 @@ export function TrendProvider({ children }) {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // --- Clear chat on pack switch ---
+  const prevPackRef = useRef(activePack?.id)
+  useEffect(() => {
+    if (activePack?.id !== prevPackRef.current) {
+      prevPackRef.current = activePack?.id
+      setMessages([])  // clear chat on pack switch
+    }
+  }, [activePack?.id])
+
+  // --- Build context for chat ---
+  const buildChatContext = useCallback(() => ({
+    active_pack: activePack?.name || '',
+    pack_topic: activePack?.topic || '',
+    current_view: '',  // will be set by ChatSidebar from App's view state
+    current_idea: studioIdea?.text || '',
+    current_sticker_prompt: '',  // will be set by Studio
+    idea_bank: (activePack?.ideas || []).map(i => i.text).slice(0, 10),
+    stickers_in_pack: activePack?.stickers?.length || 0,
+  }), [activePack, studioIdea])
+
   // --- Chat ---
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
-  const sendChatMessage = useCallback(async (text, { silent = false } = {}) => {
+  const sendChatMessage = useCallback(async (text, { silent = false, context = null } = {}) => {
     if (!text.trim()) return null
 
     const userMsg = { role: 'user', content: text }
@@ -190,6 +207,7 @@ export function TrendProvider({ children }) {
         body: JSON.stringify({
           message: text,
           history: [...trimmed, { role: 'user', content: text }],
+          context: context || buildChatContext(),
         }),
       })
 
@@ -219,7 +237,7 @@ export function TrendProvider({ children }) {
     } finally {
       setChatLoading(false)
     }
-  }, [])
+  }, [buildChatContext])
 
   const value = {
     // Packs
@@ -236,6 +254,7 @@ export function TrendProvider({ children }) {
     messages, setMessages,
     chatLoading,
     sendChatMessage,
+    buildChatContext,
   }
 
   return <TrendContext.Provider value={value}>{children}</TrendContext.Provider>

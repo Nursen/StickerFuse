@@ -84,7 +84,7 @@ function AppInner() {
             <PackView />
           )}
         </div>
-        <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} />
+        <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} currentView={currentView} />
       </div>
     </div>
   )
