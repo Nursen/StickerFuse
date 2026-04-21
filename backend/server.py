@@ -604,7 +604,6 @@ async def research_topic(req: ResearchRequest):
         from agents.research_agent import run_research
         report = await _run_in_thread(
             run_research, req.topic.strip(), max_entities=req.max_entities,
-            timeout=300,
         )
         return {
             "status": "ok",
