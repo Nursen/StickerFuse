@@ -133,7 +133,7 @@ def get_article_pageviews(article: str, days: int = 30) -> dict:
 # Search + trend check
 # ---------------------------------------------------------------------------
 
-def search_wikipedia_trends(query: str, limit: int = 5) -> dict:
+def search_wikipedia_trends(query: str, limit: int = 5, days: int = 30) -> dict:
     """Search Wikipedia for articles related to a query and check their pageview trends.
 
     Uses the Wikipedia search API to find relevant articles, then fetches
@@ -173,7 +173,7 @@ def search_wikipedia_trends(query: str, limit: int = 5) -> dict:
         print(f"  Checking pageviews for: {title}", file=sys.stderr)
 
         try:
-            pv = get_article_pageviews(title, days=30)
+            pv = get_article_pageviews(title, days=days)
         except RuntimeError as e:
             # Some articles may not have pageview data (redirects, etc.)
             print(f"  Skipping {title}: {e}", file=sys.stderr)

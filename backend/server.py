@@ -232,7 +232,20 @@ async def studio_generate_image(req: StudioImageRequest):
 class AnalyzeRequest(BaseModel):
     topic: str
     subreddits: list[str] = []
-    limit: int = 15
+    limit: int = 25
+    lookback: str = "week"  # "day", "3days", "week", "month"
+
+
+# Map UI lookback choices to miner-specific timeframe params
+_REDDIT_TIME_FILTER = {
+    "day": "day", "3days": "week", "week": "week", "month": "month",
+}
+_GOOGLE_TIMEFRAME = {
+    "day": "now 1-d", "3days": "now 7-d", "week": "now 7-d", "month": "today 1-m",
+}
+_WIKI_DAYS = {
+    "day": 3, "3days": 7, "week": 14, "month": 30,
+}
 
 
 @app.post("/api/analyze")
@@ -247,14 +260,22 @@ async def analyze_trends_direct(req: AnalyzeRequest):
     subreddits = req.subreddits or [topic.lower().replace(" ", "")]
     search_terms = [topic]
     limit = min(req.limit, 50)
+    lookback = req.lookback
+
+    reddit_tf = _REDDIT_TIME_FILTER.get(lookback, "week")
+    google_tf = _GOOGLE_TIMEFRAME.get(lookback, "now 7-d")
+    wiki_days = _WIKI_DAYS.get(lookback, 14)
 
     # Track progress
-    progress = {"sources_total": 5, "sources_done": 0, "errors": []}
+    progress = {"sources_total": 5, "sources_done": 0, "errors": [], "lookback": lookback}
 
     async def mine_reddit():
         try:
             from miners.reddit_miner import mine_multiple_subreddits
-            return await _run_in_thread(mine_multiple_subreddits, subreddits, limit=limit)
+            return await _run_in_thread(
+                mine_multiple_subreddits, subreddits,
+                limit=limit, sort="top", time_filter=reddit_tf,
+            )
         except Exception as e:
             progress["errors"].append(f"Reddit: {e}")
             return None
@@ -264,7 +285,7 @@ async def analyze_trends_direct(req: AnalyzeRequest):
     async def mine_google_trends():
         try:
             from miners.trends_miner import mine_multiple_keywords
-            return await _run_in_thread(mine_multiple_keywords, search_terms)
+            return await _run_in_thread(mine_multiple_keywords, search_terms, timeframe=google_tf)
         except Exception as e:
             progress["errors"].append(f"Google Trends: {e}")
             return None
@@ -284,7 +305,7 @@ async def analyze_trends_direct(req: AnalyzeRequest):
     async def mine_wiki():
         try:
             from miners.wikipedia_miner import search_wikipedia_trends
-            return await _run_in_thread(search_wikipedia_trends, topic, limit=5)
+            return await _run_in_thread(search_wikipedia_trends, topic, limit=5, days=wiki_days)
         except Exception as e:
             progress["errors"].append(f"Wikipedia: {e}")
             return None

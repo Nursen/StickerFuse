@@ -88,6 +88,20 @@ class TrendSignal(BaseModel):
         description="Overall sentiment: strong_positive, positive, neutral, negative, strong_negative",
     )
 
+    # Top-down trend scoring fields
+    search_volume_signal: str | None = Field(
+        default=None, description="Google Trends value: 'Breakout', '250%', 'Trending', etc."
+    )
+    reddit_match_count: int | None = Field(
+        default=None, description="How many Reddit posts matched this trend"
+    )
+    youtube_match_views: int | None = Field(
+        default=None, description="Total YouTube views for matching videos"
+    )
+    composite_score: float | None = Field(
+        default=None, description="Weighted overall score combining all signals (0-1)"
+    )
+
     # Poisson spike detection
     poisson_eta: float | None = Field(
         default=None, description="Statistical spike score (eta) from Poisson model"

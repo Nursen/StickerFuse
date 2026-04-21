@@ -181,6 +181,7 @@ const PROGRESS_SOURCES = ['Reddit', 'Google Trends', 'YouTube', 'Wikipedia', 'We
 function TrendPulse({ onNavigateStudio }) {
   const { trends, setTrends, setSelectedTrend } = useTrend()
   const [searchTopic, setSearchTopic] = useState('')
+  const [lookback, setLookback] = useState('week')
   const [expandedIdx, setExpandedIdx] = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [progressMsg, setProgressMsg] = useState('')
@@ -213,7 +214,7 @@ function TrendPulse({ onNavigateStudio }) {
       const res = await fetch('http://localhost:8000/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: searchTopic }),
+        body: JSON.stringify({ topic: searchTopic, lookback }),
       })
       clearInterval(interval)
 
@@ -295,6 +296,17 @@ function TrendPulse({ onNavigateStudio }) {
           onKeyDown={e => e.key === 'Enter' && handleAnalyze()}
           disabled={analyzing}
         />
+        <select
+          className="lookback-select"
+          value={lookback}
+          onChange={e => setLookback(e.target.value)}
+          disabled={analyzing}
+        >
+          <option value="day">Last 24 hours</option>
+          <option value="3days">Last 3 days</option>
+          <option value="week">Last week</option>
+          <option value="month">Last month</option>
+        </select>
         <button
           className="trend-search-btn"
           onClick={handleAnalyze}

@@ -1,18 +1,18 @@
-"""Pure-Python trend scorer — NO AI calls.
+"""Top-down trend scorer — Google Trends is source of truth, Reddit/YouTube/Wikipedia validate.
 
-Takes raw Reddit + Google Trends data and computes verifiable trend metrics.
-Groups posts by keyword clustering, calculates engagement velocity, spike scores,
-and attaches evidence items so every trend claim is backed by data.
+Instead of clustering Reddit posts bottom-up (which produces garbage because post titles are
+unique), we start with what Google Trends says is actually trending, then look for engagement
+evidence across Reddit, YouTube, Wikipedia, and web search.
 
 Usage:
   from miners.trend_scorer import score_trends
-  report = score_trends(reddit_data, trends_data)
+  report = score_trends(reddit_data, trends_data, youtube_data, wikipedia_data, web_search_data)
 """
 from __future__ import annotations
 
 import re
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,82 +36,12 @@ _STOPWORDS = frozenset(
 )
 
 _MIN_WORD_LEN = 4  # ignore words shorter than this
-_GENERIC_TREND_WORDS = frozenset(
-    {
-        "stage", "technical", "issue", "festival", "performance", "crowd",
-        "music", "artist", "lineup", "weekend", "show", "set", "vibe",
-    }
-)
 
 
 def _tokenize(text: str) -> list[str]:
     """Lowercase, strip non-alpha, remove stopwords and short words."""
     words = re.findall(r"[a-z]+", text.lower())
     return [w for w in words if len(w) >= _MIN_WORD_LEN and w not in _STOPWORDS]
-
-
-def _cluster_posts(posts: list[dict]) -> dict[str, list[dict]]:
-    """Group posts that share 2+ significant title words.
-
-    Simple but effective: build an inverted index of word -> posts,
-    then merge posts that share enough vocabulary.
-    """
-    # Build token sets per post
-    tokenized = []
-    for post in posts:
-        tokens = set(_tokenize(post.get("title", "")))
-        tokenized.append(tokens)
-
-    # Track which cluster each post belongs to (-1 = unassigned)
-    assignments = [-1] * len(posts)
-    clusters: dict[int, set[int]] = {}  # cluster_id -> set of post indices
-    next_id = 0
-
-    for i in range(len(posts)):
-        if assignments[i] != -1:
-            continue
-
-        # Start a new cluster with this post
-        cluster_id = next_id
-        next_id += 1
-        clusters[cluster_id] = {i}
-        assignments[i] = cluster_id
-
-        # Find all unassigned posts sharing 2+ words with any post in this cluster
-        # Simple single-pass (good enough for <1000 posts)
-        cluster_tokens = set(tokenized[i])
-        for j in range(i + 1, len(posts)):
-            if assignments[j] != -1:
-                continue
-            overlap = cluster_tokens & tokenized[j]
-            if len(overlap) >= 2:
-                clusters[cluster_id].add(j)
-                assignments[j] = cluster_id
-                cluster_tokens |= tokenized[j]
-
-    # Name each cluster by most common significant words across its posts
-    named_clusters: dict[str, list[dict]] = {}
-    for cid, indices in clusters.items():
-        word_counts: Counter[str] = Counter()
-        cluster_posts = []
-        for idx in indices:
-            cluster_posts.append(posts[idx])
-            word_counts.update(_tokenize(posts[idx].get("title", "")))
-
-        # Prefer an event-like title for naming to avoid generic labels.
-        top_post = max(cluster_posts, key=lambda p: p.get("score", 0), default={})
-        top_title = (top_post.get("title", "") or "").strip()
-        title_tokens = [w for w in _tokenize(top_title) if w not in _GENERIC_TREND_WORDS]
-
-        if top_title and len(title_tokens) >= 2:
-            words = top_title.split()
-            name = " ".join(words[:8]).strip(" -:;,.!?")
-        else:
-            top_words = [w for w, _ in word_counts.most_common(6) if w not in _GENERIC_TREND_WORDS]
-            name = " ".join(top_words[:3]) if top_words else f"cluster_{cid}"
-        named_clusters[name] = cluster_posts
-
-    return named_clusters
 
 
 def _parse_iso(dt_str: str) -> datetime:
@@ -150,15 +80,6 @@ def _determine_direction(posts: list[dict]) -> str:
     return "steady"
 
 
-def _match_cluster_to_text(cluster_words: set[str], text: str) -> bool:
-    """Check if a cluster name matches a piece of text (case-insensitive, partial)."""
-    if not text or not cluster_words:
-        return False
-    text_words = set(_tokenize(text))
-    # At least 1 significant word overlap
-    return len(cluster_words & text_words) >= 1
-
-
 # Platform weights for cross_platform_score
 _PLATFORM_WEIGHTS = {
     "reddit": 1.0,
@@ -182,6 +103,218 @@ def _compute_confidence(
     return "low"
 
 
+# ---------------------------------------------------------------------------
+# Top-down trend candidate extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_trend_candidates(
+    trends_data: dict | None,
+    youtube_data: dict | None,
+    wikipedia_data: dict | None,
+) -> list[dict]:
+    """Extract trend candidates from all data sources (top-down).
+
+    Google Trends is the primary signal. YouTube viral videos and Wikipedia
+    spikes are secondary signals that can also surface trends.
+    """
+    candidates: list[dict] = []
+
+    # 1. From Google Trends rising queries (strongest signal)
+    if trends_data:
+        for kw_data in trends_data.get("keywords", []):
+            for rq in kw_data.get("related_queries", {}).get("rising", []):
+                candidates.append({
+                    "name": rq["query"],
+                    "source": "google_trends_rising",
+                    "search_value": rq.get("value", ""),
+                })
+            # Top queries give baseline context — take top 5
+            for tq in kw_data.get("related_queries", {}).get("top", [])[:5]:
+                candidates.append({
+                    "name": tq["query"],
+                    "source": "google_trends_top",
+                    "search_value": tq.get("value", 0),
+                })
+
+        # Top trending searches (the "what's trending now" list)
+        for topic in trends_data.get("top_trending_searches", []):
+            candidates.append({
+                "name": topic,
+                "source": "google_trending_searches",
+                "search_value": "Trending",
+            })
+
+    # 2. From YouTube titles (high-engagement videos are trend signals)
+    if youtube_data:
+        for video in youtube_data.get("videos", []):
+            if video.get("view_count", 0) > 10000:
+                candidates.append({
+                    "name": video["title"][:60],
+                    "source": "youtube_viral",
+                    "search_value": video.get("view_count", 0),
+                })
+
+    # 3. From Wikipedia spikes
+    if wikipedia_data:
+        for article in wikipedia_data.get("articles", []):
+            if article.get("spike_ratio", 0) > 1.3:
+                candidates.append({
+                    "name": article["title"],
+                    "source": "wikipedia_spike",
+                    "search_value": article.get("spike_ratio", 0),
+                })
+
+    return candidates
+
+
+def _deduplicate_candidates(candidates: list[dict]) -> list[dict]:
+    """Merge candidates whose names share 50%+ significant words.
+
+    Keeps the more specific name (longer token set) and merges sources.
+    """
+    if not candidates:
+        return []
+
+    # Build token sets
+    tokenized = [set(_tokenize(c["name"])) for c in candidates]
+    merged = [False] * len(candidates)
+    result: list[dict] = []
+
+    for i in range(len(candidates)):
+        if merged[i]:
+            continue
+
+        group = [i]
+        group_tokens = set(tokenized[i])
+
+        for j in range(i + 1, len(candidates)):
+            if merged[j]:
+                continue
+            if not tokenized[i] or not tokenized[j]:
+                # For very short names, check substring match
+                if (candidates[i]["name"].lower() in candidates[j]["name"].lower()
+                        or candidates[j]["name"].lower() in candidates[i]["name"].lower()):
+                    group.append(j)
+                    merged[j] = True
+                    group_tokens |= tokenized[j]
+                continue
+
+            overlap = tokenized[i] & tokenized[j]
+            min_len = min(len(tokenized[i]), len(tokenized[j]))
+            if min_len > 0 and len(overlap) / min_len >= 0.5:
+                group.append(j)
+                merged[j] = True
+                group_tokens |= tokenized[j]
+
+        # Pick the most specific name (longest token set)
+        best_idx = max(group, key=lambda idx: len(tokenized[idx]))
+        best = dict(candidates[best_idx])
+
+        # Collect all sources
+        all_sources = [candidates[idx]["source"] for idx in group]
+        best["merged_sources"] = list(dict.fromkeys(all_sources))
+
+        # Keep the strongest search_value
+        for idx in group:
+            sv = candidates[idx]["search_value"]
+            if sv == "Breakout" or sv == "Trending":
+                best["search_value"] = sv
+                break
+
+        result.append(best)
+        merged[i] = True
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Validation: match trend candidates to platform evidence
+# ---------------------------------------------------------------------------
+
+
+def _find_matching_posts(trend_name: str, posts: list[dict]) -> list[dict]:
+    """Find Reddit posts whose titles are relevant to this trend."""
+    trend_words = set(_tokenize(trend_name))
+    if not trend_words:
+        # Fall back to substring match for short trend names
+        matching = []
+        for post in posts:
+            if trend_name.lower() in post.get("title", "").lower():
+                matching.append(post)
+        return matching
+
+    matching = []
+    for post in posts:
+        post_words = set(_tokenize(post.get("title", "")))
+        # Need significant word overlap OR full trend name as substring
+        threshold = max(1, len(trend_words) // 2)
+        if len(trend_words & post_words) >= threshold:
+            matching.append(post)
+        elif trend_name.lower() in post.get("title", "").lower():
+            matching.append(post)
+    return matching
+
+
+def _find_matching_videos(trend_name: str, videos: list[dict]) -> list[dict]:
+    """Find YouTube videos whose titles match this trend."""
+    trend_words = set(_tokenize(trend_name))
+    matching = []
+    for video in videos:
+        title = video.get("title", "")
+        if not trend_words:
+            if trend_name.lower() in title.lower():
+                matching.append(video)
+            continue
+        video_words = set(_tokenize(title))
+        if len(trend_words & video_words) >= max(1, len(trend_words) // 2):
+            matching.append(video)
+        elif trend_name.lower() in title.lower():
+            matching.append(video)
+    return matching
+
+
+def _find_matching_wiki(trend_name: str, articles: list[dict]) -> list[dict]:
+    """Find Wikipedia articles matching this trend."""
+    trend_words = set(_tokenize(trend_name))
+    matching = []
+    for article in articles:
+        title = article.get("title", "")
+        if not trend_words:
+            if trend_name.lower() in title.lower():
+                matching.append(article)
+            continue
+        article_words = set(_tokenize(title))
+        if len(trend_words & article_words) >= 1:
+            matching.append(article)
+        elif trend_name.lower() in title.lower():
+            matching.append(article)
+    return matching
+
+
+def _find_matching_web(trend_name: str, results: list[dict]) -> list[dict]:
+    """Find web search results matching this trend."""
+    trend_words = set(_tokenize(trend_name))
+    matching = []
+    for result in results:
+        combined = f"{result.get('title', '')} {result.get('snippet', '')}"
+        if not trend_words:
+            if trend_name.lower() in combined.lower():
+                matching.append(result)
+            continue
+        combined_words = set(_tokenize(combined))
+        if len(trend_words & combined_words) >= 1:
+            matching.append(result)
+        elif trend_name.lower() in combined.lower():
+            matching.append(result)
+    return matching
+
+
+# ---------------------------------------------------------------------------
+# Main scoring function
+# ---------------------------------------------------------------------------
+
+
 def score_trends(
     reddit_data: dict | None = None,
     trends_data: dict | None = None,
@@ -189,8 +322,14 @@ def score_trends(
     wikipedia_data: dict | None = None,
     web_search_data: dict | None = None,
     baseline_score: float = 100.0,
+    min_posts_per_trend: int = 2,
 ) -> TrendReport:
-    """Score and rank trends from all data sources with cross-platform correlation.
+    """Score and rank trends using a top-down approach.
+
+    Step 1: Google Trends / YouTube / Wikipedia tell us WHAT is trending.
+    Step 2: For each trend candidate, search Reddit/YouTube/Wikipedia/web for validation.
+    Step 3: Score by search volume spike + cross-platform engagement evidence.
+    Step 4: Filter to trends confirmed on 2+ platforms or with "Breakout" status.
 
     Args:
         reddit_data: Output from mine_multiple_subreddits().
@@ -199,17 +338,18 @@ def score_trends(
         wikipedia_data: Output from search_wikipedia_trends() (optional).
         web_search_data: Output from mine_web_search() (optional).
         baseline_score: Assumed median post score when subreddit median unavailable.
+        min_posts_per_trend: Minimum matching Reddit posts (only enforced when Reddit is sole signal).
 
     Returns:
         TrendReport with ranked, evidence-backed, cross-correlated trend signals.
     """
     now = datetime.now(tz=timezone.utc)
 
-    # Handle case where reddit_data is None
+    # Handle None inputs
     if reddit_data is None:
         reddit_data = {"subreddits": []}
 
-    # Flatten all posts from all subreddits
+    # Flatten all Reddit posts
     all_posts: list[dict] = []
     subreddit_names: set[str] = set()
     for sub_data in reddit_data.get("subreddits", []):
@@ -219,65 +359,183 @@ def score_trends(
             post["_subreddit"] = sub_name
             all_posts.append(post)
 
-    # Cluster posts by topic
-    clusters = _cluster_posts(all_posts)
+    # Collect platform data
+    yt_videos: list[dict] = youtube_data.get("videos", []) if youtube_data else []
+    wiki_articles: list[dict] = wikipedia_data.get("articles", []) if wikipedia_data else []
+    web_results: list[dict] = web_search_data.get("results", []) if web_search_data else []
 
-    # Build Google Trends lookup for matching
-    rising_queries: dict[str, dict] = {}  # lowercase query -> data
-    if trends_data:
-        for kw_data in trends_data.get("keywords", []):
-            for rq in kw_data.get("related_queries", {}).get("rising", []):
-                query_lower = rq.get("query", "").lower()
-                rising_queries[query_lower] = rq
+    # ── Step 1: Extract trend candidates (top-down) ──────────────────────
+    candidates = _extract_trend_candidates(trends_data, youtube_data, wikipedia_data)
 
-    # Build YouTube lookup: title words -> video data
-    yt_videos: list[dict] = []
-    if youtube_data:
-        yt_videos = youtube_data.get("videos", [])
+    # ── Step 2: Deduplicate candidates ───────────────────────────────────
+    candidates = _deduplicate_candidates(candidates)
 
-    # Build Wikipedia lookup: article title -> pageview data
-    wiki_articles: list[dict] = []
-    if wikipedia_data:
-        wiki_articles = wikipedia_data.get("articles", [])
-
-    # Build web search lookup: results list
-    web_results: list[dict] = []
-    if web_search_data:
-        web_results = web_search_data.get("results", [])
-
-    # Score each cluster
+    # ── Step 3: Validate each candidate and score ────────────────────────
     trend_signals: list[TrendSignal] = []
 
-    for cluster_name, posts in clusters.items():
-        if not posts:
+    for candidate in candidates:
+        trend_name = candidate["name"]
+        search_value_raw = candidate.get("search_value", "")
+        candidate_source = candidate.get("source", "")
+
+        # -- Cross-platform validation --
+        platforms_confirmed: list[str] = []
+        evidence: list[EvidenceItem] = []
+
+        # Google Trends is confirmed if candidate came from there
+        search_volume_signal: str | None = None
+        search_interest: int | None = None
+        search_interest_change: str | None = None
+
+        if candidate_source.startswith("google_trend"):
+            platforms_confirmed.append("google_trends")
+            search_volume_signal = str(search_value_raw)
+            search_interest_change = str(search_value_raw)
+
+            # Try to parse numeric interest value
+            numeric_val = re.sub(r"[^\d.]", "", str(search_value_raw))
+            evidence.append(
+                EvidenceItem(
+                    source="google_trends",
+                    url=f"https://trends.google.com/trends/explore?q={trend_name.replace(' ', '+')}",
+                    title=trend_name,
+                    metric_name="search_interest",
+                    metric_value=float(numeric_val) if numeric_val else 0.0,
+                    timestamp=now.isoformat(),
+                )
+            )
+
+        # Also check interest_over_time from trends data for search_interest
+        if trends_data and search_interest is None:
+            for kw_data in trends_data.get("keywords", []):
+                iot = kw_data.get("interest_over_time", [])
+                if iot:
+                    search_interest = iot[-1].get("interest")
+
+        # -- Reddit validation --
+        matching_posts = _find_matching_posts(trend_name, all_posts)
+        reddit_match_count = len(matching_posts)
+
+        if matching_posts:
+            platforms_confirmed.append("reddit")
+            top_posts = sorted(matching_posts, key=lambda p: p.get("score", 0), reverse=True)[:5]
+            for p in top_posts:
+                evidence.append(
+                    EvidenceItem(
+                        source="reddit",
+                        url=p.get("url", ""),
+                        title=p.get("title", ""),
+                        metric_name="score",
+                        metric_value=float(p.get("score", 0)),
+                        timestamp=p.get("created_utc", now.isoformat()),
+                    )
+                )
+
+        # -- YouTube validation --
+        matching_videos = _find_matching_videos(trend_name, yt_videos)
+        youtube_match_views = sum(v.get("view_count", 0) for v in matching_videos)
+        youtube_view_velocity: float | None = None
+
+        if matching_videos:
+            if "youtube" not in platforms_confirmed:
+                platforms_confirmed.append("youtube")
+            best_video = max(matching_videos, key=lambda v: v.get("view_count", 0))
+            youtube_view_velocity = float(best_video.get("views_per_hour", 0) or 0)
+            for v in matching_videos[:3]:
+                evidence.append(
+                    EvidenceItem(
+                        source="youtube",
+                        url=v.get("url", ""),
+                        title=v.get("title", ""),
+                        metric_name="view_count",
+                        metric_value=float(v.get("view_count", 0)),
+                        timestamp=v.get("published_at", now.isoformat()),
+                    )
+                )
+
+        # -- Wikipedia validation --
+        matching_wiki = _find_matching_wiki(trend_name, wiki_articles)
+        wikipedia_spike_ratio: float | None = None
+
+        if matching_wiki:
+            if "wikipedia" not in platforms_confirmed:
+                platforms_confirmed.append("wikipedia")
+            best_wiki = max(matching_wiki, key=lambda a: a.get("spike_ratio", 0))
+            wikipedia_spike_ratio = best_wiki.get("spike_ratio", 0.0)
+            title = best_wiki.get("title", "")
+            evidence.append(
+                EvidenceItem(
+                    source="wikipedia",
+                    url=best_wiki.get("url", f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}"),
+                    title=title,
+                    metric_name="spike_ratio",
+                    metric_value=float(wikipedia_spike_ratio or 0),
+                    timestamp=now.isoformat(),
+                )
+            )
+
+        # -- Web search validation --
+        matching_web = _find_matching_web(trend_name, web_results)
+        web_mentions: int | None = None
+
+        if matching_web:
+            platforms_confirmed.append("web_search")
+            web_mentions = len(matching_web)
+            first_web = matching_web[0]
+            evidence.append(
+                EvidenceItem(
+                    source="web_search",
+                    url=first_web.get("url", ""),
+                    title=first_web.get("title", ""),
+                    metric_name="web_mention",
+                    metric_value=float(len(matching_web)),
+                    timestamp=now.isoformat(),
+                )
+            )
+
+        # -- Filter: need 2+ platforms OR "Breakout"/"Trending" status --
+        is_breakout = str(search_value_raw) in ("Breakout", "Trending")
+        platform_count = len(dict.fromkeys(platforms_confirmed))
+        if platform_count < 2 and not is_breakout:
             continue
 
+        # -- Compute Reddit-based metrics (if matching posts exist) --
+        posts = matching_posts if matching_posts else []
         post_count = len(posts)
         total_score = sum(p.get("score", 0) for p in posts)
         total_comments = sum(p.get("num_comments", 0) for p in posts)
-        avg_score = total_score / post_count
+        avg_score = total_score / max(post_count, 1)
 
-        # Time calculations
-        timestamps = [_parse_iso(p.get("created_utc", "")) for p in posts]
-        earliest = min(timestamps)
-        latest = max(timestamps)
-        hours_span = _hours_between(earliest, now)
+        # Time calculations from Reddit posts
+        if posts:
+            timestamps = [_parse_iso(p.get("created_utc", "")) for p in posts]
+            earliest = min(timestamps)
+            latest = max(timestamps)
+            hours_span = _hours_between(earliest, now)
+            peak_post = max(posts, key=lambda p: p.get("score", 0))
+            peak_time = _parse_iso(peak_post.get("created_utc", ""))
+            peak_post_score = peak_post.get("score", 0)
+            direction = _determine_direction(posts)
+        else:
+            earliest = now
+            hours_span = 1.0
+            peak_time = now
+            peak_post_score = 0
+            direction = "steady"
 
-        engagement_velocity = total_score / hours_span
-        spike_score = avg_score / baseline_score
-
-        # Peak post
-        peak_post = max(posts, key=lambda p: p.get("score", 0))
-        peak_time = _parse_iso(peak_post.get("created_utc", ""))
-
-        # Direction
-        direction = _determine_direction(posts)
+        engagement_velocity = total_score / hours_span if hours_span > 0 else 0.0
+        spike_score = avg_score / baseline_score if baseline_score > 0 else 0.0
 
         # ── Sentiment analysis (VADER — free, instant) ──────────────
-        titles = [p.get("title", "") for p in posts if p.get("title")]
-        sentiment_stats = analyze_sentiment_batch(titles)
-        sentiment_score = sentiment_stats["avg_compound"]
-        emotional_intensity_val = sentiment_stats["emotional_intensity"]
+        if posts:
+            titles = [p.get("title", "") for p in posts if p.get("title")]
+            sentiment_stats = analyze_sentiment_batch(titles)
+            sentiment_score = sentiment_stats["avg_compound"]
+            emotional_intensity_val = sentiment_stats["emotional_intensity"]
+        else:
+            sentiment_score = 0.0
+            emotional_intensity_val = 0.0
+
         sentiment_label = (
             "strong_positive" if sentiment_score > 0.5
             else "positive" if sentiment_score > 0.05
@@ -287,8 +545,12 @@ def score_trends(
         )
 
         # ── Poisson spike detection (pure math — zero cost) ─────────
-        spike_result = score_engagement_spike(posts, time_bucket_hours=6)
-        poisson_eta = spike_result["max_eta"]
+        if posts:
+            spike_result = score_engagement_spike(posts, time_bucket_hours=6)
+            poisson_eta = spike_result["max_eta"]
+        else:
+            poisson_eta = 0.0
+
         spike_magnitude = (
             "extreme" if poisson_eta >= 3.0
             else "notable" if poisson_eta >= 2.0
@@ -296,130 +558,13 @@ def score_trends(
             else "none"
         )
 
-        # Time window description
+        # Time window
         if hours_span <= 24:
             time_window = "last 24h"
         elif hours_span <= 168:
             time_window = "last 7d"
         else:
             time_window = f"last {int(hours_span / 24)}d"
-
-        # Build evidence items
-        evidence: list[EvidenceItem] = []
-        # Add top 5 posts by score as evidence
-        top_posts = sorted(posts, key=lambda p: p.get("score", 0), reverse=True)[:5]
-        for p in top_posts:
-            evidence.append(
-                EvidenceItem(
-                    source="reddit",
-                    url=p.get("url", ""),
-                    title=p.get("title", ""),
-                    metric_name="score",
-                    metric_value=float(p.get("score", 0)),
-                    timestamp=p.get("created_utc", now.isoformat()),
-                )
-            )
-
-        # --- Cross-platform matching ---
-        search_interest: int | None = None
-        search_interest_change: str | None = None
-        platforms_confirmed: list[str] = ["reddit"]
-        cluster_words = set(cluster_name.lower().split())
-
-        # Wikipedia correlation
-        wikipedia_spike_ratio: float | None = None
-        for article in wiki_articles:
-            title = article.get("title", "")
-            if _match_cluster_to_text(cluster_words, title):
-                sr = article.get("spike_ratio", 0.0)
-                wikipedia_spike_ratio = sr
-                platforms_confirmed.append("wikipedia")
-                evidence.append(
-                    EvidenceItem(
-                        source="wikipedia",
-                        url=article.get("url", f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}"),
-                        title=title,
-                        metric_name="spike_ratio",
-                        metric_value=float(sr),
-                        timestamp=now.isoformat(),
-                    )
-                )
-                break
-
-        # YouTube correlation
-        youtube_view_velocity: float | None = None
-        for video in yt_videos:
-            title = video.get("title", "")
-            if _match_cluster_to_text(cluster_words, title):
-                vph = video.get("views_per_hour")
-                if vph is not None:
-                    youtube_view_velocity = float(vph)
-                platforms_confirmed.append("youtube")
-                evidence.append(
-                    EvidenceItem(
-                        source="youtube",
-                        url=video.get("url", ""),
-                        title=title,
-                        metric_name="views_per_hour",
-                        metric_value=float(vph or video.get("view_count", 0)),
-                        timestamp=video.get("published_at", now.isoformat()),
-                    )
-                )
-                break
-
-        # Google Trends correlation
-        for query_text, query_data in rising_queries.items():
-            query_words = set(_tokenize(query_text))
-            if len(cluster_words & query_words) >= 1:
-                value_str = str(query_data.get("value", ""))
-                search_interest_change = value_str
-                platforms_confirmed.append("google_trends")
-                evidence.append(
-                    EvidenceItem(
-                        source="google_trends",
-                        url=f"https://trends.google.com/trends/explore?q={query_text.replace(' ', '+')}",
-                        title=query_text,
-                        metric_name="search_interest",
-                        metric_value=float(
-                            re.sub(r"[^\d.]", "", value_str) or 0
-                        ),
-                        timestamp=now.isoformat(),
-                    )
-                )
-                break  # one match is enough
-
-        # Web search correlation
-        web_mentions: int | None = None
-        matching_web = 0
-        for result in web_results:
-            title = result.get("title", "")
-            snippet = result.get("snippet", "")
-            combined = f"{title} {snippet}"
-            if _match_cluster_to_text(cluster_words, combined):
-                matching_web += 1
-                if matching_web == 1:
-                    # Add first match as evidence
-                    evidence.append(
-                        EvidenceItem(
-                            source="web_search",
-                            url=result.get("url", ""),
-                            title=title,
-                            metric_name="web_mention",
-                            metric_value=1.0,
-                            timestamp=now.isoformat(),
-                        )
-                    )
-        if matching_web > 0:
-            web_mentions = matching_web
-            platforms_confirmed.append("web_search")
-
-        # Also check interest_over_time from trends data
-        if trends_data and search_interest is None:
-            for kw_data in trends_data.get("keywords", []):
-                iot = kw_data.get("interest_over_time", [])
-                if iot:
-                    latest_point = iot[-1]
-                    search_interest = latest_point.get("interest")
 
         # Deduplicate platforms
         platforms_confirmed = list(dict.fromkeys(platforms_confirmed))
@@ -430,23 +575,55 @@ def score_trends(
             _PLATFORM_WEIGHTS.get(p, 0.5) for p in platforms_confirmed
         )
 
+        # ── Composite score: weighted combination of all signals ────
+        # Normalize search value to 0-1 range
+        sv_numeric = 0.0
+        sv_str = str(search_value_raw)
+        if sv_str == "Breakout":
+            sv_numeric = 1.0
+        elif sv_str == "Trending":
+            sv_numeric = 0.8
+        else:
+            cleaned = re.sub(r"[^\d.]", "", sv_str)
+            if cleaned:
+                sv_numeric = min(float(cleaned) / 500.0, 1.0)  # 500% is max expected
+
+        reddit_signal = min(total_score / 5000.0, 1.0) if total_score > 0 else 0.0
+        yt_signal = min(youtube_match_views / 1_000_000.0, 1.0) if youtube_match_views > 0 else 0.0
+        wiki_signal = min((wikipedia_spike_ratio or 0) / 5.0, 1.0)
+        web_signal = min((web_mentions or 0) / 10.0, 1.0)
+
+        composite_score = (
+            sv_numeric * 0.35
+            + reddit_signal * 0.25
+            + yt_signal * 0.20
+            + wiki_signal * 0.10
+            + web_signal * 0.10
+        )
+
         # Confidence rating
         confidence = _compute_confidence(platform_count, spike_score, cross_platform_score)
 
-        # Build the description from the top post titles
-        desc_posts = top_posts[:3]
-        desc = "; ".join(p.get("title", "")[:80] for p in desc_posts)
+        # Build description
+        desc_parts = [f"Trending ({candidate_source.replace('_', ' ')})"]
+        if reddit_match_count > 0:
+            desc_parts.append(f"{reddit_match_count} Reddit posts")
+        if youtube_match_views > 0:
+            desc_parts.append(f"{youtube_match_views:,} YouTube views")
+        if wikipedia_spike_ratio and wikipedia_spike_ratio > 1.0:
+            desc_parts.append(f"{wikipedia_spike_ratio:.1f}x Wikipedia spike")
+        description = " | ".join(desc_parts)
 
         trend_signals.append(
             TrendSignal(
-                name=cluster_name,
-                description=f"Cluster of {post_count} posts: {desc}",
+                name=trend_name,
+                description=description,
                 post_count=post_count,
                 total_engagement=total_score,
                 avg_engagement_rate=round(avg_score, 1),
                 engagement_velocity=round(engagement_velocity, 2),
                 spike_score=round(spike_score, 2),
-                peak_post_score=peak_post.get("score", 0),
+                peak_post_score=peak_post_score,
                 comment_volume=total_comments,
                 time_window=time_window,
                 first_seen=earliest.isoformat(),
@@ -454,6 +631,10 @@ def score_trends(
                 trend_direction=direction,
                 search_interest=search_interest,
                 search_interest_change=search_interest_change,
+                search_volume_signal=str(search_value_raw) if search_value_raw else None,
+                reddit_match_count=reddit_match_count,
+                youtube_match_views=youtube_match_views if youtube_match_views > 0 else None,
+                composite_score=round(composite_score, 4),
                 platform_count=platform_count,
                 cross_platform_score=round(cross_platform_score, 2),
                 platforms_confirmed=platforms_confirmed,
@@ -471,9 +652,9 @@ def score_trends(
             )
         )
 
-    # Sort by cross_platform_score first, then spike_score
+    # Sort by composite_score first, then cross_platform_score
     trend_signals.sort(
-        key=lambda t: (t.cross_platform_score, t.spike_score), reverse=True
+        key=lambda t: (t.composite_score or 0, t.cross_platform_score), reverse=True
     )
 
     return TrendReport(
