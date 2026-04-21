@@ -616,15 +616,20 @@ async def ideate_merch_endpoint(req: MerchIdeationRequest):
     synthesis = "\n".join(synthesis_parts) if synthesis_parts else ""
 
     # Step 3: Ideate — merch agent gets the community pulse as context
+    # Cap context size to avoid Gemini output validation failures on huge prompts
     try:
         from agents.merch_ideation_agent import ideate_merch
         community_ctx = req.community_context or ""
         if synthesis:
+            # Trim synthesis to ~4000 chars to keep prompt manageable
+            trimmed = synthesis[:4000]
             community_ctx = (
                 f"LIVE COMMUNITY DATA (mined from {', '.join(sources_used)}):\n"
-                f"{synthesis}\n\n"
+                f"{trimmed}\n\n"
                 f"{community_ctx}"
             ).strip()
+        # Overall cap
+        community_ctx = community_ctx[:6000]
 
         result = await _run_in_thread(
             ideate_merch, topic, vibe=req.vibe, community_context=community_ctx

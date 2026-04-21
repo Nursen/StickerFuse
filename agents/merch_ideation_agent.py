@@ -156,6 +156,7 @@ merch_agent = Agent(
     output_type=MerchIdeationResult,
     model_settings=GoogleModelSettings(temperature=0.8, max_tokens=8192),
     builtin_tools=[WebSearchTool()],
+    retries=3,
 )
 
 
