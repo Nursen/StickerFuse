@@ -1370,6 +1370,12 @@ body {
 }
 
 /* Generate button */
+.generate-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .generate-btn {
   width: 100%;
   padding: 14px;
@@ -1392,6 +1398,22 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.generate-btn-single {
+  width: 100%;
+  padding: 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.generate-btn-single:hover:not(:disabled) { border-color: var(--accent); }
+.generate-btn-single:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Gallery empty state */
 .gallery-empty {

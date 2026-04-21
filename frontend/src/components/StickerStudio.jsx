@@ -160,6 +160,40 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
     }
   }
 
+  const handleGenerateSingle = async () => {
+    setGenerating(true)
+    setNotice('Generating from your exact visual direction...')
+    const prompt = buildPrompt()
+    try {
+      const res = await fetch(`${API_BASE}/api/studio/generate-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, parent_topic: parentTopic, moment: stickerText }),
+      })
+      const data = await res.json()
+      if (data?.filename) {
+        const newVersion = {
+          filename: data.filename,
+          prompt,
+          label: 'Direct generation',
+          timestamp: new Date().toISOString(),
+        }
+        setAllVersions(prev => {
+          const next = [...prev, newVersion]
+          setSelectedVersion(next.length - 1)
+          return next
+        })
+        setNotice('Generated from your exact direction.')
+      } else {
+        setNotice('Generation failed. Check your API key and try again.')
+      }
+    } catch (err) {
+      setNotice(`Error: ${err.message}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const handleRefine = async () => {
     if (!refinement.trim() || selectedVersion === null) return
     setGenerating(true)
@@ -345,10 +379,15 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
             </div>
           </div>
 
-          {/* Generate Button */}
-          <button className="generate-btn" onClick={handleGenerate} disabled={generating}>
-            {generating ? 'Generating...' : 'Generate 3 Variations'}
-          </button>
+          {/* Generate Buttons */}
+          <div className="generate-buttons">
+            <button className="generate-btn" onClick={handleGenerate} disabled={generating}>
+              {generating ? 'Generating...' : 'Generate 3 Variations'}
+            </button>
+            <button className="generate-btn-single" onClick={handleGenerateSingle} disabled={generating}>
+              Generate This Exact Direction
+            </button>
+          </div>
         </div>
 
         {/* RIGHT PANEL -- Generation Gallery */}
