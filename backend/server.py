@@ -416,16 +416,116 @@ class MerchIdeationRequest(BaseModel):
 
 @app.post("/api/ideate")
 async def ideate_merch_endpoint(req: MerchIdeationRequest):
-    """Generate sticker concepts by colliding fandom DNA with internet culture."""
-    if not req.topic.strip():
+    """Mine community data, synthesize into a fandom pulse, then generate sticker concepts.
+
+    The mining feeds the ideation — concepts are grounded in what fans are
+    actually saying right now, not just Gemini's training data.
+
+    Returns:
+        data: MerchIdeationResult (sticker concepts)
+        synthesis: The intermediate fandom pulse (what we found from mining)
+    """
+    import asyncio
+
+    topic = req.topic.strip()
+    if not topic:
         return JSONResponse({"status": "error", "error": "topic is required"}, status_code=400)
 
+    subreddit = topic.lower().replace(" ", "")
+
+    # Step 1: Mine community data in parallel (invisible to user)
+    async def mine_reddit_comments():
+        try:
+            from miners.reddit_miner import mine_multiple_subreddits
+            return await _run_in_thread(
+                mine_multiple_subreddits, [subreddit],
+                limit=20, sort="hot", include_comments=True, max_comment_posts=8,
+            )
+        except Exception:
+            return None
+
+    async def mine_yt():
+        try:
+            from miners.youtube_miner import mine_youtube
+            return await _run_in_thread(mine_youtube, topic, limit=10)
+        except Exception:
+            return None
+
+    async def mine_wiki():
+        try:
+            from miners.wikipedia_miner import search_wikipedia_trends
+            return await _run_in_thread(search_wikipedia_trends, topic, limit=3)
+        except Exception:
+            return None
+
+    reddit_data, youtube_data, wiki_data = await asyncio.gather(
+        mine_reddit_comments(), mine_yt(), mine_wiki()
+    )
+
+    # Step 2: Synthesize — build a community pulse summary from mined data
+    synthesis_parts = []
+    sources_used = []
+
+    if reddit_data:
+        sources_used.append("reddit")
+        for sub in reddit_data.get("subreddits", []):
+            for post in sub.get("posts", [])[:10]:
+                title = post.get("title", "")
+                score = post.get("score", 0)
+                synthesis_parts.append(f"[Reddit {score}↑] {title}")
+                for c in post.get("top_comments", [])[:5]:
+                    c_score = c.get("score", 0)
+                    body = c.get("body", "")[:150]
+                    synthesis_parts.append(f"  [{c_score}↑] {body}")
+
+    if youtube_data:
+        sources_used.append("youtube")
+        for v in youtube_data.get("videos", [])[:8]:
+            views = v.get("view_count", 0)
+            title = v.get("title", "")
+            synthesis_parts.append(f"[YouTube {views} views] {title}")
+
+    if wiki_data:
+        sources_used.append("wikipedia")
+        for a in wiki_data.get("articles", []):
+            spike = a.get("spike_ratio", 0)
+            title = a.get("title", "")
+            synthesis_parts.append(f"[Wikipedia spike:{spike:.1f}x] {title}")
+
+    synthesis = "\n".join(synthesis_parts) if synthesis_parts else ""
+
+    # Step 3: Ideate — merch agent gets the community pulse as context
     try:
         from agents.merch_ideation_agent import ideate_merch
+        community_ctx = req.community_context or ""
+        if synthesis:
+            community_ctx = (
+                f"LIVE COMMUNITY DATA (mined from {', '.join(sources_used)}):\n"
+                f"{synthesis}\n\n"
+                f"{community_ctx}"
+            ).strip()
+
         result = await _run_in_thread(
-            ideate_merch, req.topic.strip(), vibe=req.vibe, community_context=req.community_context
+            ideate_merch, topic, vibe=req.vibe, community_context=community_ctx
         )
-        return {"status": "ok", "data": result.model_dump()}
+        return {
+            "status": "ok",
+            "data": result.model_dump(),
+            "synthesis": {
+                "sources": sources_used,
+                "summary": synthesis[:3000],
+                "post_count": sum(
+                    sub.get("post_count", 0)
+                    for sub in (reddit_data or {}).get("subreddits", [])
+                ),
+                "comment_count": sum(
+                    len(post.get("top_comments", []))
+                    for sub in (reddit_data or {}).get("subreddits", [])
+                    for post in sub.get("posts", [])
+                ),
+                "youtube_videos": len(youtube_data.get("videos", [])) if youtube_data else 0,
+            },
+        }
     except Exception as exc:
         return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 

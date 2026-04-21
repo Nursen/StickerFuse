@@ -85,21 +85,25 @@ function TrendPulse({ onNavigateStudio }) {
   const [analyzing, setAnalyzing] = useState(false)
   const [progressMsg, setProgressMsg] = useState('')
   const [merchResult, setMerchResult] = useState(null)
+  const [synthesis, setSynthesis] = useState(null)
   const [selectedIdeas, setSelectedIdeas] = useState(new Set())
 
   const handleSearch = async () => {
     if (!searchTopic.trim() || analyzing) return
     setAnalyzing(true)
     setMerchResult(null)
+    setSynthesis(null)
     setSelectedIdeas(new Set())
-    setProgressMsg('Researching fandom DNA + current internet culture...')
+    setProgressMsg('Mining fandom communities for what fans are saying right now...')
 
     const msgs = [
-      'Searching web for fandom quotes, ships, and icons...',
-      'Finding trending internet phrases and meme formats...',
+      'Scraping Reddit posts + top comments...',
+      'Scanning YouTube for reaction videos...',
+      'Checking Wikipedia pageview spikes...',
+      'Synthesizing community pulse...',
+      'Researching fandom DNA + current internet vernacular...',
       'Colliding fandom × internet culture...',
-      'Generating sticker concepts...',
-      'Ranking by appeal and creativity...',
+      'Generating sticker concepts grounded in real fan data...',
     ]
     let msgIdx = 0
     const interval = setInterval(() => {
@@ -120,8 +124,13 @@ function TrendPulse({ onNavigateStudio }) {
 
       if (data.data) {
         setMerchResult(data.data)
+        if (data.synthesis) setSynthesis(data.synthesis)
         const count = data.data.sticker_ideas?.length || 0
-        setProgressMsg(`${count} sticker concepts generated for "${searchTopic}"`)
+        const syn = data.synthesis
+        const sourceInfo = syn
+          ? ` · mined ${syn.post_count || 0} posts, ${syn.comment_count || 0} comments, ${syn.youtube_videos || 0} videos`
+          : ''
+        setProgressMsg(`${count} sticker concepts for "${searchTopic}"${sourceInfo}`)
       } else if (data.error) {
         setProgressMsg(`Error: ${data.error}`)
       }
