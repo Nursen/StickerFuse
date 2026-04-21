@@ -21,6 +21,7 @@ export default function IdeaBank({ onGoToStudio }) {
   const [analyzing, setAnalyzing] = useState(false)
   const [progressMsg, setProgressMsg] = useState('')
   const [addingAll, setAddingAll] = useState(false)
+  const [researchReport, setResearchReport] = useState(null)
   const abortRef = useRef(null)
 
   const ideas = activePack?.ideas || []
@@ -46,28 +47,29 @@ export default function IdeaBank({ onGoToStudio }) {
 
     setAnalyzing(true)
     setBrainstormResults(null)
-    setProgressMsg('Mining fandom communities for what fans are saying right now...')
+    setResearchReport(null)
+    setProgressMsg('Step 1/4: Mapping the cultural universe...')
 
     const msgs = [
-      'Scraping Reddit posts + top comments...',
-      'Scanning YouTube for reaction videos...',
-      'Checking Wikipedia pageview spikes...',
-      'Synthesizing community pulse...',
-      'Researching fandom DNA + current internet vernacular...',
-      'Colliding fandom x internet culture...',
-      'Generating sticker concepts grounded in real fan data...',
+      'Step 1/4: Mapping entities, moments, and communities...',
+      'Step 2/4: Gathering evidence across Reddit, YouTube, web...',
+      'Step 2/4: Researching what people are saying (parallel)...',
+      'Step 3/4: Synthesizing cultural insights...',
+      'Step 3/4: Drawing conclusions from evidence...',
+      'Step 4/4: Generating sticker opportunities...',
+      'Step 4/4: Colliding fandom × internet culture...',
     ]
     let msgIdx = 0
     const interval = setInterval(() => {
       msgIdx = Math.min(msgIdx + 1, msgs.length - 1)
       setProgressMsg(msgs[msgIdx])
-    }, 4000)
+    }, 8000)
 
     try {
-      const res = await fetch('http://localhost:8000/api/ideate', {
+      const res = await fetch('http://localhost:8000/api/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: searchTopic }),
+        body: JSON.stringify({ topic: searchTopic, max_entities: 6 }),
         signal: controller.signal,
       })
       clearInterval(interval)
@@ -76,15 +78,18 @@ export default function IdeaBank({ onGoToStudio }) {
       const data = await res.json()
 
       if (data.status === 'error' && data.error) {
-        setProgressMsg(`Analysis failed: ${data.error}`)
-      } else if (data.data) {
-        const stickerIdeas = data.data.sticker_ideas || []
-        setBrainstormResults(stickerIdeas)
-        const syn = data.synthesis
-        const sourceInfo = syn
-          ? ` -- mined ${syn.post_count || 0} posts, ${syn.comment_count || 0} comments, ${syn.youtube_videos || 0} videos`
-          : ''
-        setProgressMsg(`${stickerIdeas.length} concepts for "${searchTopic}"${sourceInfo}`)
+        setProgressMsg(`Research failed: ${data.error}`)
+      } else if (data.report) {
+        const report = data.report
+        setResearchReport(report)
+        const opps = report.opportunities || []
+        setBrainstormResults(opps)
+        const nInsights = report.insights?.length || 0
+        const nEvidence = report.evidence?.length || 0
+        setProgressMsg(
+          `${opps.length} sticker concepts from ${nInsights} insights, ` +
+          `${nEvidence} entities researched`
+        )
       } else {
         setProgressMsg('Unexpected response from server.')
       }
@@ -109,7 +114,12 @@ export default function IdeaBank({ onGoToStudio }) {
         source: 'ai',
         topic: searchTopic,
         concept: aiIdea.concept,
-        visual_description: aiIdea.visual_description,
+        visual_description: aiIdea.visual_sketch || aiIdea.visual_description,
+        why_now: aiIdea.why_now,
+        target_buyer: aiIdea.target_buyer,
+        emotional_hook: aiIdea.emotional_hook,
+        source_insight: aiIdea.source_insight,
+        // Legacy fields for backward compat with merch ideation results
         fandom_element: aiIdea.fandom_element,
         internet_element: aiIdea.internet_element,
         category: aiIdea.category,
@@ -132,7 +142,11 @@ export default function IdeaBank({ onGoToStudio }) {
           source: 'ai',
           topic: searchTopic,
           concept: ai.concept,
-          visual_description: ai.visual_description,
+          visual_description: ai.visual_sketch || ai.visual_description,
+          why_now: ai.why_now,
+          target_buyer: ai.target_buyer,
+          emotional_hook: ai.emotional_hook,
+          source_insight: ai.source_insight,
           fandom_element: ai.fandom_element,
           internet_element: ai.internet_element,
           category: ai.category,
@@ -250,6 +264,11 @@ export default function IdeaBank({ onGoToStudio }) {
                       <div className="idea-sticker-text">"{idea.text_on_sticker}"</div>
                     )}
                     <p className="idea-concept">{idea.concept}</p>
+                    {/* Research agent fields */}
+                    {idea.why_now && <p className="idea-why">🕐 {idea.why_now}</p>}
+                    {idea.emotional_hook && <p className="idea-hook">💡 {idea.emotional_hook}</p>}
+                    {idea.target_buyer && <p className="idea-buyer">🎯 {idea.target_buyer}</p>}
+                    {/* Legacy merch ideation fields */}
                     {idea.fandom_element && idea.internet_element && (
                       <div className="idea-collision">
                         <span className="collision-tag fandom-tag">{idea.fandom_element}</span>
@@ -273,6 +292,36 @@ export default function IdeaBank({ onGoToStudio }) {
               })}
             </div>
           </div>
+        )}
+
+        {/* Research Report (collapsible) */}
+        {researchReport && !analyzing && (
+          <details className="research-report-panel">
+            <summary className="research-report-toggle">
+              📋 Research Report — {researchReport.insights?.length || 0} insights,{' '}
+              {researchReport.evidence?.length || 0} entities researched
+            </summary>
+            <div className="research-report-content">
+              <p className="research-summary">{researchReport.executive_summary}</p>
+
+              {researchReport.insights?.length > 0 && (
+                <div className="research-insights">
+                  <h5>Cultural Insights</h5>
+                  {researchReport.insights.map((ins, i) => (
+                    <div key={i} className="insight-card">
+                      <div className="insight-header">
+                        <span className={`virality-badge virality-${ins.virality}`}>{ins.virality}</span>
+                        <strong>{ins.moment}</strong>
+                      </div>
+                      <p>{ins.what_happened}</p>
+                      <p className="insight-reaction">{ins.community_reaction}</p>
+                      <p className="insight-angle">🎨 {ins.sticker_angle}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </details>
         )}
       </section>
 

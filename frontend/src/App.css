@@ -3007,3 +3007,25 @@ body {
     text-align: left;
   }
 }
+
+/* Research Report panel */
+.research-report-panel { margin-top: 16px; }
+.research-report-toggle { cursor: pointer; color: var(--text-muted); font-size: 0.85rem; padding: 8px 0; }
+.research-report-content { padding: 12px 0; }
+.research-summary { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
+.research-insights { display: flex; flex-direction: column; gap: 10px; }
+.research-insights h5 { font-size: 0.9rem; margin-bottom: 4px; }
+.insight-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.insight-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.insight-card p { font-size: 0.82rem; color: var(--text-muted); margin: 4px 0; line-height: 1.4; }
+.insight-reaction { font-style: italic; }
+.insight-angle { color: var(--accent) !important; }
+.virality-badge { font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 8px; text-transform: uppercase; }
+.virality-viral { background: rgba(239,68,68,0.15); color: #f87171; }
+.virality-trending { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.virality-steady { background: rgba(34,197,94,0.15); color: #4ade80; }
+.virality-niche { background: rgba(99,102,241,0.15); color: #818cf8; }
+.virality-fading { background: rgba(107,114,128,0.15); color: #9ca3af; }
+
+/* Idea card extra fields */
+.idea-hook, .idea-buyer { font-size: 0.78rem; color: var(--text-muted); margin: 3px 0; }
