@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +34,7 @@ from pydantic_ai.messages import ToolReturnPart  # noqa: E402
 
 from backend.chat_agent import run_chat_with_retries, _run_in_thread  # noqa: E402
 from backend.sticker_library import get_library  # noqa: E402
+from backend.pack_manager import PackManager  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # App
@@ -759,6 +760,133 @@ def _collect_tool_results_from_run(run_result) -> list[ToolResult]:
                     )
                 )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Pack system — persistent sticker pack storage (ideas + stickers + export)
+# ---------------------------------------------------------------------------
+
+_pack_mgr = PackManager(PROJECT_ROOT)
+
+
+class CreatePackRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    topic: str = Field(default="", max_length=200)
+
+
+class AddIdeaRequest(BaseModel):
+    idea: dict  # flexible — can be manual text or AI-generated concept
+
+
+class AddIdeasBatchRequest(BaseModel):
+    ideas: list[dict]
+
+
+class UpdatePackRequest(BaseModel):
+    name: str | None = None
+    topic: str | None = None
+
+
+class AddStickerToPackRequest(BaseModel):
+    filename: str
+    idea_ref: str = ""
+
+
+@app.post("/api/packs")
+async def create_pack(req: CreatePackRequest):
+    pack = _pack_mgr.create_pack(req.name, req.topic)
+    return {"status": "ok", "pack": pack}
+
+
+@app.get("/api/packs")
+async def list_packs():
+    return {"status": "ok", "packs": _pack_mgr.list_packs()}
+
+
+@app.get("/api/packs/{pack_id}")
+async def get_pack(pack_id: str):
+    try:
+        return {"status": "ok", "pack": _pack_mgr.get_pack(pack_id)}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.patch("/api/packs/{pack_id}")
+async def update_pack(pack_id: str, req: UpdatePackRequest):
+    try:
+        pack = _pack_mgr.update_pack(pack_id, name=req.name, topic=req.topic)
+        return {"status": "ok", "pack": pack}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.delete("/api/packs/{pack_id}")
+async def delete_pack(pack_id: str):
+    try:
+        _pack_mgr.delete_pack(pack_id)
+        return {"status": "ok"}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.post("/api/packs/{pack_id}/ideas")
+async def add_idea_to_pack(pack_id: str, req: AddIdeaRequest):
+    try:
+        pack = _pack_mgr.add_idea(pack_id, req.idea)
+        return {"status": "ok", "pack": pack}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.post("/api/packs/{pack_id}/ideas/batch")
+async def add_ideas_batch(pack_id: str, req: AddIdeasBatchRequest):
+    try:
+        pack = _pack_mgr.add_ideas_batch(pack_id, req.ideas)
+        return {"status": "ok", "pack": pack}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.delete("/api/packs/{pack_id}/ideas/{idea_id}")
+async def remove_idea(pack_id: str, idea_id: str):
+    try:
+        pack = _pack_mgr.remove_idea(pack_id, idea_id)
+        return {"status": "ok", "pack": pack}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.post("/api/packs/{pack_id}/stickers")
+async def add_sticker_to_pack(pack_id: str, req: AddStickerToPackRequest):
+    try:
+        pack = _pack_mgr.add_sticker(pack_id, req.filename, req.idea_ref)
+        return {"status": "ok", "pack": pack}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.delete("/api/packs/{pack_id}/stickers/{filename}")
+async def remove_sticker_from_pack(pack_id: str, filename: str):
+    try:
+        pack = _pack_mgr.remove_sticker(pack_id, filename)
+        return {"status": "ok", "pack": pack}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
+
+
+@app.get("/api/packs/{pack_id}/export")
+async def export_pack(pack_id: str):
+    try:
+        stickers_dir = PROJECT_ROOT / "outputs" / "stickers"
+        zip_path = _pack_mgr.export_zip(pack_id, stickers_dir)
+        pack = _pack_mgr.get_pack(pack_id)
+        return FileResponse(
+            str(zip_path),
+            media_type="application/zip",
+            filename=f"{pack['name'].replace(' ', '_')}_stickers.zip",
+        )
+    except ValueError as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=404)
 
 
 # ---------------------------------------------------------------------------

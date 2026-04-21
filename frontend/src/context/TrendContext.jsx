@@ -2,9 +2,10 @@ import { createContext, useState, useContext, useRef, useCallback, useEffect } f
 
 const TrendContext = createContext()
 
-const API_URL = 'http://localhost:8000/api/chat'
+const API_BASE = 'http://localhost:8000'
+const CHAT_URL = `${API_BASE}/api/chat`
 
-// LocalStorage helpers
+// LocalStorage helpers — only used for activePackId now
 function loadState(key, fallback) {
   try {
     const raw = localStorage.getItem(`stickerfuse_${key}`)
@@ -17,27 +18,154 @@ function saveState(key, value) {
 }
 
 export function TrendProvider({ children }) {
-  const [trends, setTrendsRaw] = useState(() => loadState('trends', []))
-  const [selectedTrend, setSelectedTrendRaw] = useState(() => loadState('selectedTrend', null))
-  const [stickerIdeas, setStickerIdeasRaw] = useState(() => loadState('stickerIdeas', []))
-  const [viralBites, setViralBitesRaw] = useState(() => loadState('viralBites', []))
-  const [generatedStickers, setGeneratedStickersRaw] = useState(() => loadState('generatedStickers', []))
-  const [moments, setMomentsRaw] = useState(() => loadState('moments', null))
+  // --- Pack state (source of truth is the API) ---
+  const [packs, setPacks] = useState([])
+  const [activePack, setActivePack] = useState(null)
+
+  // Studio state (ephemeral per session)
+  const [generatedStickers, setGeneratedStickers] = useState([])
+  const [stickerIdeas, setStickerIdeas] = useState([])
+
+  // AI brainstorm results (before adding to bank)
+  const [brainstormResults, setBrainstormResults] = useState(null)
+
+  // The idea currently being designed in Studio
+  const [studioIdea, setStudioIdea] = useState(null)
+
+  // Chat
   const [messages, setMessages] = useState(() => loadState('messages', []))
   const [chatLoading, setChatLoading] = useState(false)
 
-  // Persist to localStorage on change
-  const setTrends = (v) => { const val = typeof v === 'function' ? v(trends) : v; setTrendsRaw(val); saveState('trends', val) }
-  const setSelectedTrend = (v) => { setSelectedTrendRaw(v); saveState('selectedTrend', v) }
-  const setStickerIdeas = (v) => { const val = typeof v === 'function' ? v(stickerIdeas) : v; setStickerIdeasRaw(val); saveState('stickerIdeas', val) }
-  const setViralBites = (v) => { const val = typeof v === 'function' ? v(viralBites) : v; setViralBitesRaw(val); saveState('viralBites', val) }
-  const setGeneratedStickers = (v) => { const val = typeof v === 'function' ? v(generatedStickers) : v; setGeneratedStickersRaw(val); saveState('generatedStickers', val) }
-  const setMoments = (v) => { const val = typeof v === 'function' ? v(moments) : v; setMomentsRaw(val); saveState('moments', val) }
-
-  // Also persist messages
+  // Persist messages
   useEffect(() => { saveState('messages', messages) }, [messages])
 
-  // Stable ref for messages to avoid stale closures
+  // --- Pack API helpers ---
+  const fetchPacks = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/packs`)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      setPacks(data.packs || data || [])
+    } catch (e) {
+      console.error('fetchPacks failed:', e)
+    }
+  }, [])
+
+  const createPack = useCallback(async (name, topic) => {
+    const res = await fetch(`${API_BASE}/api/packs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, topic }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    const pack = data.pack || data
+    setActivePack(pack)
+    saveState('activePackId', pack.id)
+    // Refresh packs list
+    fetchPacks()
+    return pack
+  }, [fetchPacks])
+
+  const selectPack = useCallback(async (packId) => {
+    const res = await fetch(`${API_BASE}/api/packs/${packId}`)
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    const pack = data.pack || data
+    setActivePack(pack)
+    saveState('activePackId', pack.id)
+    // Reset studio state when switching packs
+    setGeneratedStickers([])
+    setStickerIdeas([])
+    setBrainstormResults(null)
+    setStudioIdea(null)
+    return pack
+  }, [])
+
+  const refreshActivePack = useCallback(async () => {
+    if (!activePack?.id) return
+    try {
+      const res = await fetch(`${API_BASE}/api/packs/${activePack.id}`)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      setActivePack(data.pack || data)
+    } catch (e) {
+      console.error('refreshActivePack failed:', e)
+    }
+  }, [activePack?.id])
+
+  const addIdeaToPack = useCallback(async (idea) => {
+    if (!activePack?.id) return
+    const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/ideas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(idea),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    await refreshActivePack()
+  }, [activePack?.id, refreshActivePack])
+
+  const addIdeasBatch = useCallback(async (ideas) => {
+    if (!activePack?.id) return
+    const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/ideas/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ideas }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    await refreshActivePack()
+  }, [activePack?.id, refreshActivePack])
+
+  const removeIdeaFromPack = useCallback(async (ideaId) => {
+    if (!activePack?.id) return
+    const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/ideas/${ideaId}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    await refreshActivePack()
+  }, [activePack?.id, refreshActivePack])
+
+  const addStickerToPack = useCallback(async (filename, ideaRef) => {
+    if (!activePack?.id) return
+    const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/stickers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, idea_ref: ideaRef }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    await refreshActivePack()
+  }, [activePack?.id, refreshActivePack])
+
+  const removeStickerFromPack = useCallback(async (filename) => {
+    if (!activePack?.id) return
+    const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/stickers/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    await refreshActivePack()
+  }, [activePack?.id, refreshActivePack])
+
+  const clearActivePack = useCallback(() => {
+    setActivePack(null)
+    saveState('activePackId', null)
+    setGeneratedStickers([])
+    setStickerIdeas([])
+    setBrainstormResults(null)
+    setStudioIdea(null)
+  }, [])
+
+  // Restore active pack on mount
+  useEffect(() => {
+    const savedId = loadState('activePackId', null)
+    if (savedId) {
+      selectPack(savedId).catch(() => {
+        // Pack may have been deleted; clear stale reference
+        saveState('activePackId', null)
+      })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Chat ---
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
@@ -45,7 +173,10 @@ export function TrendProvider({ children }) {
     if (!text.trim()) return null
 
     const userMsg = { role: 'user', content: text }
-    const nextMessages = [...messagesRef.current, userMsg]
+    const current = messagesRef.current
+    // Keep last 4 messages for context, strip toolResults, cap at 50
+    const trimmed = current.slice(-4).map(m => ({ role: m.role, content: m.content }))
+    const nextMessages = [...current, userMsg]
 
     if (!silent) {
       setMessages(nextMessages)
@@ -53,12 +184,12 @@ export function TrendProvider({ children }) {
     setChatLoading(true)
 
     try {
-      const res = await fetch(API_URL, {
+      const res = await fetch(CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: nextMessages.map(m => ({ role: m.role, content: m.content })),
+          history: [...trimmed, { role: 'user', content: text }],
         }),
       })
 
@@ -91,12 +222,17 @@ export function TrendProvider({ children }) {
   }, [])
 
   const value = {
-    trends, setTrends,
-    selectedTrend, setSelectedTrend,
-    stickerIdeas, setStickerIdeas,
-    viralBites, setViralBites,
+    // Packs
+    packs, fetchPacks, createPack, selectPack, activePack, clearActivePack,
+    addIdeaToPack, addIdeasBatch, removeIdeaFromPack,
+    addStickerToPack, removeStickerFromPack, refreshActivePack,
+    // Studio
     generatedStickers, setGeneratedStickers,
-    moments, setMoments,
+    stickerIdeas, setStickerIdeas,
+    studioIdea, setStudioIdea,
+    // Brainstorm
+    brainstormResults, setBrainstormResults,
+    // Chat
     messages, setMessages,
     chatLoading,
     sendChatMessage,

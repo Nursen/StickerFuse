@@ -1,38 +1,59 @@
 import { useState } from 'react'
-import { TrendProvider } from './context/TrendContext'
-import TrendPulse from './components/TrendPulse'
+import { TrendProvider, useTrend } from './context/TrendContext'
+import PackHome from './components/PackHome'
+import IdeaBank from './components/IdeaBank'
 import StickerStudio from './components/StickerStudio'
-import StickerViewer from './components/StickerViewer'
-import CommunityView from './components/CommunityView'
+import PackView from './components/PackView'
 import ChatSidebar from './components/ChatSidebar'
 
-const TABS = [
-  { id: 'trends', label: 'Trends' },
-  { id: 'studio', label: 'Studio' },
-  { id: 'library', label: 'Sticker Viewer' },
-  { id: 'community', label: 'Community', badge: 'Beta' },
-]
-
 function AppInner() {
-  const [activeTab, setActiveTab] = useState('trends')
+  const { activePack, clearActivePack } = useTrend()
   const [chatOpen, setChatOpen] = useState(false)
+  const [view, setView] = useState('home') // 'home' | 'ideas' | 'studio' | 'pack-view'
+
+  // If no active pack and not on home, redirect to home
+  const currentView = (!activePack && view !== 'home') ? 'home' : view
 
   return (
     <div className={`app-layout ${chatOpen ? 'chat-open' : ''}`}>
       <header className="top-nav">
-        <h1 className="logo">StickerFuse</h1>
-        <nav className="nav-tabs">
-          {TABS.map(tab => (
+        <h1
+          className="logo"
+          onClick={() => { clearActivePack(); setView('home') }}
+          style={{ cursor: 'pointer' }}
+        >
+          StickerFuse
+        </h1>
+
+        {activePack && (
+          <nav className="nav-tabs">
             <button
-              key={tab.id}
-              className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+              className={`nav-tab ${currentView === 'ideas' ? 'active' : ''}`}
+              onClick={() => setView('ideas')}
             >
-              {tab.label}
-              {tab.badge && <span className="tab-badge">{tab.badge}</span>}
+              Ideas ({activePack.ideas?.length || 0})
             </button>
-          ))}
-        </nav>
+            <button
+              className={`nav-tab ${currentView === 'studio' ? 'active' : ''}`}
+              onClick={() => setView('studio')}
+            >
+              Studio
+            </button>
+            <button
+              className={`nav-tab ${currentView === 'pack-view' ? 'active' : ''}`}
+              onClick={() => setView('pack-view')}
+            >
+              Pack ({activePack.stickers?.length || 0})
+            </button>
+          </nav>
+        )}
+
+        {activePack && (
+          <span className="active-pack-indicator">
+            {activePack.name}
+          </span>
+        )}
+
         <button
           className={`chat-toggle ${chatOpen ? 'active' : ''}`}
           onClick={() => setChatOpen(!chatOpen)}
@@ -47,17 +68,20 @@ function AppInner() {
 
       <div className="main-area">
         <div className="content-panel">
-          {activeTab === 'trends' && (
-            <TrendPulse onNavigateStudio={() => setActiveTab('studio')} />
+          {currentView === 'home' && (
+            <PackHome onPackSelected={() => setView('ideas')} />
           )}
-          {activeTab === 'studio' && (
-            <StickerStudio onNavigateTrends={() => setActiveTab('trends')} />
+          {currentView === 'ideas' && (
+            <IdeaBank onGoToStudio={() => setView('studio')} />
           )}
-          {activeTab === 'library' && (
-            <StickerViewer />
+          {currentView === 'studio' && (
+            <StickerStudio
+              onGoToIdeas={() => setView('ideas')}
+              onGoToPack={() => setView('pack-view')}
+            />
           )}
-          {activeTab === 'community' && (
-            <CommunityView />
+          {currentView === 'pack-view' && (
+            <PackView />
           )}
         </div>
         <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} />
