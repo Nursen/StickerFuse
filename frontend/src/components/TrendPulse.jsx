@@ -130,7 +130,9 @@ function TrendPulse({ onNavigateStudio }) {
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
       const data = await res.json()
 
-      if (data.data) {
+      if (data.status === 'error' && data.error) {
+        setProgressMsg(`Analysis failed: ${data.error}`)
+      } else if (data.data) {
         setMerchResult(data.data)
         if (data.synthesis) setSynthesis(data.synthesis)
         const count = data.data.sticker_ideas?.length || 0
@@ -138,9 +140,11 @@ function TrendPulse({ onNavigateStudio }) {
         const sourceInfo = syn
           ? ` · mined ${syn.post_count || 0} posts, ${syn.comment_count || 0} comments, ${syn.youtube_videos || 0} videos`
           : ''
-        setProgressMsg(`${count} sticker concepts for "${searchTopic}"${sourceInfo}`)
+        setProgressMsg(`${count} sticker concepts for “${searchTopic}”${sourceInfo}`)
       } else if (data.error) {
         setProgressMsg(`Error: ${data.error}`)
+      } else {
+        setProgressMsg('Unexpected response from server. Try again or check the backend logs.')
       }
     } catch (err) {
       clearInterval(interval)
@@ -196,7 +200,12 @@ function TrendPulse({ onNavigateStudio }) {
           placeholder="Enter a fandom, show, game, artist, or cultural moment..."
           value={searchTopic}
           onChange={e => setSearchTopic(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleSearch()
+            }
+          }}
           disabled={analyzing}
         />
         <button
@@ -211,6 +220,11 @@ function TrendPulse({ onNavigateStudio }) {
       {/* Empty state */}
       {!merchResult && !analyzing && (
         <div className="trend-empty">
+          {progressMsg && (
+            <div className={`trend-feedback ${progressMsg.startsWith('Error:') || progressMsg.startsWith('Analysis failed') ? 'trend-feedback-error' : ''}`}>
+              {progressMsg}
+            </div>
+          )}
           <div className="trend-empty-icon">✨</div>
           <h2>What stickers should we make?</h2>
           <p>

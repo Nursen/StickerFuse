@@ -1,4 +1,5 @@
 import ToolResult from './ToolResult'
+import SaveToLibraryButton from './SaveToLibraryButton'
 
 // Minimal markdown: **bold**, `code`, ```code blocks```
 function renderContent(text) {
@@ -77,6 +78,7 @@ function Message({ message }) {
                 >
                   Download
                 </a>
+                <SaveToLibraryButton sourceFilename={filename} />
               </div>
             ))}
           </div>

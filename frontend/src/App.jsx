@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { TrendProvider } from './context/TrendContext'
 import TrendPulse from './components/TrendPulse'
 import StickerStudio from './components/StickerStudio'
+import StickerViewer from './components/StickerViewer'
 import CommunityView from './components/CommunityView'
 import ChatSidebar from './components/ChatSidebar'
 
 const TABS = [
   { id: 'trends', label: 'Trends' },
   { id: 'studio', label: 'Studio' },
+  { id: 'library', label: 'Sticker Viewer' },
   { id: 'community', label: 'Community', badge: 'Beta' },
 ]
 
@@ -50,6 +52,9 @@ function AppInner() {
           )}
           {activeTab === 'studio' && (
             <StickerStudio onNavigateTrends={() => setActiveTab('trends')} />
+          )}
+          {activeTab === 'library' && (
+            <StickerViewer />
           )}
           {activeTab === 'community' && (
             <CommunityView />

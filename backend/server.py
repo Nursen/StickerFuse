@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +33,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 from pydantic_ai.messages import ToolReturnPart  # noqa: E402
 
 from backend.chat_agent import run_chat_with_retries, _run_in_thread  # noqa: E402
+from backend.sticker_library import get_library  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # App
@@ -220,6 +222,124 @@ async def studio_generate_image(req: StudioImageRequest):
         path = await _run_in_thread(generate_sticker_image, full)
         name = path.name
         return {"status": "ok", "filename": name, "url": f"/stickers/{name}"}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+def _sticker_output_dir() -> Path:
+    return PROJECT_ROOT / "outputs" / "stickers"
+
+
+@app.delete("/api/studio/sticker/{filename}")
+async def studio_delete_sticker(filename: str):
+    """Remove a generated sticker PNG from disk (Studio gallery delete)."""
+    safe = Path(filename).name
+    if safe != filename or ".." in filename:
+        return JSONResponse({"status": "error", "error": "Invalid filename"}, status_code=400)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.png", safe):
+        return JSONResponse({"status": "error", "error": "Invalid filename"}, status_code=400)
+    base = _sticker_output_dir().resolve()
+    path = (base / safe).resolve()
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return JSONResponse({"status": "error", "error": "Invalid path"}, status_code=400)
+    if not path.is_file():
+        return JSONResponse({"status": "error", "error": "Not found"}, status_code=404)
+    path.unlink()
+    return {"status": "ok", "deleted": safe}
+
+
+# ---------------------------------------------------------------------------
+# Sticker Viewer — persistent library (copies; independent of Studio deletes)
+# ---------------------------------------------------------------------------
+
+_sticker_lib = get_library(PROJECT_ROOT)
+
+
+class StickerLibraryFolderCreate(BaseModel):
+    name: str
+
+
+class StickerLibrarySaveItem(BaseModel):
+    folder_id: str
+    source_filename: str
+
+
+class StickerLibraryMoveItem(BaseModel):
+    folder_id: str
+
+
+@app.get("/api/sticker-library")
+async def sticker_library_list():
+    """Folders and items for the Sticker Viewer tab."""
+    try:
+        data = _sticker_lib.list_all()
+        return {"status": "ok", **data}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/sticker-library/folders")
+async def sticker_library_create_folder(req: StickerLibraryFolderCreate):
+    try:
+        folder = _sticker_lib.create_folder(req.name)
+        return {"status": "ok", "folder": folder}
+    except ValueError as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.delete("/api/sticker-library/folders/{folder_id}")
+async def sticker_library_delete_folder(folder_id: str):
+    try:
+        _sticker_lib.delete_folder(folder_id)
+        return {"status": "ok", "deleted_folder": folder_id}
+    except ValueError as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/sticker-library/items")
+async def sticker_library_save_item(req: StickerLibrarySaveItem):
+    """Copy a PNG from outputs/stickers into a library folder."""
+    try:
+        item = _sticker_lib.add_item_from_stickers_folder(req.folder_id, req.source_filename)
+        return {
+            "status": "ok",
+            "item": item,
+            "url": f"/library/{item['folder_id']}/{item['filename']}",
+        }
+    except ValueError as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.patch("/api/sticker-library/items/{item_id}")
+async def sticker_library_move_item(item_id: str, req: StickerLibraryMoveItem):
+    try:
+        item = _sticker_lib.move_item(item_id, req.folder_id)
+        return {
+            "status": "ok",
+            "item": item,
+            "url": f"/library/{item['folder_id']}/{item['filename']}",
+        }
+    except ValueError as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.delete("/api/sticker-library/items/{item_id}")
+async def sticker_library_delete_item(item_id: str):
+    try:
+        _sticker_lib.delete_item(item_id)
+        return {"status": "ok", "deleted": item_id}
+    except ValueError as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=400)
     except Exception as exc:
         return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 
@@ -652,6 +772,15 @@ app.mount(
     "/stickers",
     StaticFiles(directory=str(STICKERS_DIR)),
     name="sticker-images",
+)
+
+STICKER_LIBRARY_DATA = PROJECT_ROOT / "outputs" / "sticker_library" / "data"
+STICKER_LIBRARY_DATA.mkdir(parents=True, exist_ok=True)
+
+app.mount(
+    "/library",
+    StaticFiles(directory=str(STICKER_LIBRARY_DATA)),
+    name="sticker-library-images",
 )
 
 

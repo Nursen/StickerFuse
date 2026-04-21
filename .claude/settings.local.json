@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(cursor:*)",
+      "Bash(open:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(python3 -m uvicorn backend.server:app --port 8000)",
+      "Bash(python3 -c \"from backend.server import app; print\\(''import OK''\\)\")",
+      "Bash(python3 -c \"from backend.server import app; print\\(''Server imports OK''\\)\")",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(\"/Users/nursen/Spring 1 2026/Social Media AI/RedBubble/.env\")",
+      "Bash(lsof -ti:8000)",
+      "Bash(xargs kill:*)",
+      "Bash(lsof -ti:5173)",
+      "Bash(curl -s -o /dev/null -w \"frontend: %{http_code}\" http://localhost:5173/)",
+      "Bash(lsof -i:8000)",
+      "Bash(curl:*)",
+      "Bash(python3 -m json.tool)",
+      "WebFetch(domain:developers.reddit.com)",
+      "WebFetch(domain:support.reddithelp.com)",
+      "WebFetch(domain:www.reddit.com)",
+      "WebSearch",
+      "WebFetch(domain:molehill.io)",
+      "Bash(python3 -m miners.reddit_miner --subreddits taylorswift --limit 3)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:news.microsoft.com)",
+      "WebFetch(domain:consumergoods.com)",
+      "WebFetch(domain:try.activate.social)",
+      "WebFetch(domain:www.brainlabsdigital.com)",
+      "WebFetch(domain:www.talkwalker.com)",
+      "WebFetch(domain:dialzara.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(time curl:*)"
+    ]
+  }
+}

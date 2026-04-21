@@ -20,6 +20,29 @@ from pathlib import Path
 from pytrends.request import TrendReq
 
 
+def _empty_trends_payload(
+    keyword: str,
+    *,
+    timeframe: str,
+    geo: str,
+    note: str = "",
+) -> dict:
+    """Valid empty/minimal payload when pytrends fails partway (keeps trend_scorer happy)."""
+    out = {
+        "source": "google_trends",
+        "keyword": keyword,
+        "timeframe": timeframe,
+        "geo": geo,
+        "mined_at": datetime.now(tz=timezone.utc).isoformat(),
+        "interest_over_time": [],
+        "related_queries": {"rising": [], "top": []},
+        "related_topics": {"rising": [], "top": []},
+    }
+    if note:
+        out["fetch_note"] = note
+    return out
+
+
 def mine_trends(
     keyword: str,
     *,
@@ -42,60 +65,80 @@ def mine_trends(
     Returns:
         Dict with interest over time, related queries, and related topics.
     """
-    pytrends = TrendReq(hl="en-US", tz=360)
-    pytrends.build_payload([keyword], cat=0, timeframe=timeframe, geo=geo)
+    interest_data: list[dict] = []
+    rising_queries: list[dict] = []
+    top_queries: list[dict] = []
+    rising_topics: list[dict] = []
+    top_topics: list[dict] = []
+    notes: list[str] = []
 
-    # Interest over time
-    interest_df = pytrends.interest_over_time()
-    interest_data = []
-    if not interest_df.empty and keyword in interest_df.columns:
-        for date, row in interest_df.iterrows():
-            interest_data.append({
-                "date": date.isoformat(),
-                "interest": int(row[keyword]),
-            })
+    try:
+        pytrends = TrendReq(hl="en-US", tz=360)
+        pytrends.build_payload([keyword], cat=0, timeframe=timeframe, geo=geo)
+    except Exception as e:
+        return _empty_trends_payload(keyword, timeframe=timeframe, geo=geo, note=f"build_payload failed: {e}")
+
+    # Interest over time — pytrends sometimes raises IndexError on sparse/empty responses
+    try:
+        interest_df = pytrends.interest_over_time()
+        if not interest_df.empty and keyword in interest_df.columns:
+            for date, row in interest_df.iterrows():
+                interest_data.append({
+                    "date": date.isoformat(),
+                    "interest": int(row[keyword]),
+                })
+    except (IndexError, KeyError, ValueError) as e:
+        notes.append(f"interest_over_time: {e}")
+    except Exception as e:
+        notes.append(f"interest_over_time: {e}")
 
     # Related queries
-    related_queries_raw = pytrends.related_queries()
-    rising_queries = []
-    top_queries = []
-    if keyword in related_queries_raw:
-        kw_data = related_queries_raw[keyword]
-        if kw_data.get("rising") is not None and not kw_data["rising"].empty:
-            for _, row in kw_data["rising"].head(15).iterrows():
-                rising_queries.append({
-                    "query": row["query"],
-                    "value": str(row["value"]),
-                })
-        if kw_data.get("top") is not None and not kw_data["top"].empty:
-            for _, row in kw_data["top"].head(15).iterrows():
-                top_queries.append({
-                    "query": row["query"],
-                    "value": int(row["value"]),
-                })
+    try:
+        related_queries_raw = pytrends.related_queries()
+        if keyword in related_queries_raw:
+            kw_data = related_queries_raw[keyword]
+            if kw_data.get("rising") is not None and not kw_data["rising"].empty:
+                for _, row in kw_data["rising"].head(15).iterrows():
+                    rising_queries.append({
+                        "query": row["query"],
+                        "value": str(row["value"]),
+                    })
+            if kw_data.get("top") is not None and not kw_data["top"].empty:
+                for _, row in kw_data["top"].head(15).iterrows():
+                    top_queries.append({
+                        "query": row["query"],
+                        "value": int(row["value"]),
+                    })
+    except (IndexError, KeyError, ValueError) as e:
+        notes.append(f"related_queries: {e}")
+    except Exception as e:
+        notes.append(f"related_queries: {e}")
 
-    # Related topics
-    related_topics_raw = pytrends.related_topics()
-    rising_topics = []
-    top_topics = []
-    if keyword in related_topics_raw:
-        t_data = related_topics_raw[keyword]
-        if t_data.get("rising") is not None and not t_data["rising"].empty:
-            for _, row in t_data["rising"].head(10).iterrows():
-                rising_topics.append({
-                    "title": row.get("topic_title", ""),
-                    "type": row.get("topic_type", ""),
-                    "value": str(row.get("value", "")),
-                })
-        if t_data.get("top") is not None and not t_data["top"].empty:
-            for _, row in t_data["top"].head(10).iterrows():
-                top_topics.append({
-                    "title": row.get("topic_title", ""),
-                    "type": row.get("topic_type", ""),
-                    "value": int(row.get("value", 0)),
-                })
+    # Related topics — frequent source of IndexError in pytrends for niche keywords
+    try:
+        related_topics_raw = pytrends.related_topics()
+        if keyword in related_topics_raw:
+            t_data = related_topics_raw[keyword]
+            if t_data.get("rising") is not None and not t_data["rising"].empty:
+                for _, row in t_data["rising"].head(10).iterrows():
+                    rising_topics.append({
+                        "title": row.get("topic_title", ""),
+                        "type": row.get("topic_type", ""),
+                        "value": str(row.get("value", "")),
+                    })
+            if t_data.get("top") is not None and not t_data["top"].empty:
+                for _, row in t_data["top"].head(10).iterrows():
+                    top_topics.append({
+                        "title": row.get("topic_title", ""),
+                        "type": row.get("topic_type", ""),
+                        "value": int(row.get("value", 0)),
+                    })
+    except (IndexError, KeyError, ValueError) as e:
+        notes.append(f"related_topics: {e}")
+    except Exception as e:
+        notes.append(f"related_topics: {e}")
 
-    return {
+    out = {
         "source": "google_trends",
         "keyword": keyword,
         "timeframe": timeframe,
@@ -111,6 +154,9 @@ def mine_trends(
             "top": top_topics,
         },
     }
+    if notes:
+        out["fetch_note"] = "; ".join(notes)
+    return out
 
 
 def mine_multiple_keywords(

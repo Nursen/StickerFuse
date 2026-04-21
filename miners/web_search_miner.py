@@ -115,6 +115,8 @@ def _build_agent(*, model_name: str = DEFAULT_MODEL) -> Agent[None, str]:
             "recent viral moments, trending discussions, and social media buzz "
             "about the given topic. Search multiple times if needed to cover "
             "Twitter/X, TikTok, Reddit, news sites, and blogs.\n\n"
+            "Important: Do not quote long passages from any site. Paraphrase in your own words "
+            "to avoid recitation. Short snippets (under 25 words) are OK.\n\n"
             "After searching, respond with a single JSON object (no markdown fences):\n"
             '{"summary": "2-3 sentence overview of what\'s trending", '
             '"mentions": [{"title": "...", "snippet": "...", "url": "...", '
@@ -153,6 +155,27 @@ def _extract_grounding_urls(messages: list[Any]) -> list[dict]:
                         "source_type": "grounding_chunk",
                     })
     return rows
+
+
+def _web_search_empty_result(query: str, now: datetime, err: BaseException) -> dict[str, Any]:
+    """Graceful degradation so /api/analyze still completes when Gemini blocks web search."""
+    s = str(err).lower()
+    blocked = "recitation" in s or "content_filter" in s
+    hint = (
+        "Gemini blocked grounded output (often for well-known shows/IPs). Other sources still apply."
+        if blocked
+        else "Web search step failed; other sources still apply."
+    )
+    return {
+        "source": "web_search",
+        "query": query,
+        "mined_at": now.isoformat(),
+        "search_provider": "gemini_google_search_grounding",
+        "result_count": 0,
+        "results": [],
+        "summary": hint,
+        "error_sanitized": str(err)[:500],
+    }
 
 
 def _parse_model_output(text: str) -> dict[str, Any]:
@@ -195,53 +218,90 @@ def mine_web_search(query: str, *, model_name: str = DEFAULT_MODEL) -> dict:
         f"Focus on content from the last 7 days. Today is {now.strftime('%B %d, %Y')}."
     )
 
-    run = sync_retry_llm(lambda: agent.run_sync(user_prompt))
-    messages = run.all_messages()
+    # Softer follow-up if Gemini blocks with RECITATION / content_filter (common for media IPs)
+    fallback_prompt = (
+        f"Topic: {query}. Use web_search briefly. In your own words only, give a JSON object "
+        f'exactly as instructed with summary and mentions (URLs from results). '
+        f"Avoid quoting or closely paraphrasing any single copyrighted passage. "
+        f"Today is {now.strftime('%B %d, %Y')}."
+    )
 
-    # Get grounding URLs from the raw message exchange
-    grounding_results = _extract_grounding_urls(messages)
+    def _is_blocked(exc: BaseException) -> bool:
+        s = str(exc).lower()
+        return "recitation" in s or "content_filter" in s or "content filter" in s
 
-    # Parse the model's structured output
-    parsed = _parse_model_output(run.output)
-    summary = parsed.get("summary", "")
+    run = None
+    try:
+        run = sync_retry_llm(lambda: agent.run_sync(user_prompt))
+    except Exception as first_err:
+        if _is_blocked(first_err):
+            print(
+                f"Web search: first pass blocked ({str(first_err)[:220]}), retrying with fallback prompt...",
+                file=sys.stderr,
+            )
+            try:
+                run = sync_retry_llm(lambda: agent.run_sync(fallback_prompt))
+            except Exception as second_err:
+                print(f"Web search fallback failed: {str(second_err)[:400]}", file=sys.stderr)
+                return _web_search_empty_result(query, now, second_err)
+        else:
+            print(f"Web search failed: {str(first_err)[:400]}", file=sys.stderr)
+            return _web_search_empty_result(query, now, first_err)
 
-    # Merge model mentions with grounding URLs
-    model_mentions = parsed.get("mentions", [])
-    seen_urls: set[str] = set()
-    results: list[dict] = []
+    if run is None:
+        return _web_search_empty_result(query, now, RuntimeError("no model run"))
 
-    # Model mentions first (tend to be higher quality)
-    for mention in model_mentions:
-        if not isinstance(mention, dict):
-            continue
-        url = mention.get("url", "")
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            results.append({
-                "url": url,
-                "title": mention.get("title", ""),
-                "snippet": mention.get("snippet", ""),
-                "platform": _detect_platform(url),
-                "relevance": mention.get("relevance", "medium"),
-                "source_type": "model_json",
-            })
+    try:
+        messages = run.all_messages()
 
-    # Then grounding URLs the model didn't mention
-    for row in grounding_results:
-        url = row.get("url", "")
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            results.append(row)
+        # Get grounding URLs from the raw message exchange
+        grounding_results = _extract_grounding_urls(messages)
 
-    return {
-        "source": "web_search",
-        "query": query,
-        "mined_at": now.isoformat(),
-        "search_provider": "gemini_google_search_grounding",
-        "result_count": len(results),
-        "results": results,
-        "summary": summary,
-    }
+        # Parse the model's structured output
+        out_text = run.output or ""
+        parsed = _parse_model_output(out_text)
+        summary = parsed.get("summary", "")
+
+        # Merge model mentions with grounding URLs
+        model_mentions = parsed.get("mentions", [])
+        seen_urls: set[str] = set()
+        results: list[dict] = []
+
+        # Model mentions first (tend to be higher quality)
+        for mention in model_mentions:
+            if not isinstance(mention, dict):
+                continue
+            url = mention.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                results.append({
+                    "url": url,
+                    "title": mention.get("title", ""),
+                    "snippet": mention.get("snippet", ""),
+                    "platform": _detect_platform(url),
+                    "relevance": mention.get("relevance", "medium"),
+                    "source_type": "model_json",
+                })
+
+        # Then grounding URLs the model didn't mention
+        for row in grounding_results:
+            url = row.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                results.append(row)
+
+        return {
+            "source": "web_search",
+            "query": query,
+            "mined_at": now.isoformat(),
+            "search_provider": "gemini_google_search_grounding",
+            "result_count": len(results),
+            "results": results,
+            "summary": summary,
+        }
+    except Exception as tail_err:
+        print(f"Web search post-process failed: {str(tail_err)[:400]}", file=sys.stderr)
+        return _web_search_empty_result(query, now, tail_err)
 
 
 # ---------------------------------------------------------------------------

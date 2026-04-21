@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTrend } from '../context/TrendContext'
+import SaveToLibraryButton from './SaveToLibraryButton'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -22,7 +23,6 @@ function StickerStudio({ onNavigateTrends }) {
     viralBites,
     stickerIdeas, setStickerIdeas,
     generatedStickers, setGeneratedStickers,
-    chatLoading,
   } = useTrend()
 
   // If we arrived with pre-selected merch ideas (from TrendPulse), use them as sticker concepts
@@ -37,6 +37,10 @@ function StickerStudio({ onNavigateTrends }) {
   const [studioNotice, setStudioNotice] = useState('')
   const [phraseOptions, setPhraseOptions] = useState([])
   const [selectedPhraseOption, setSelectedPhraseOption] = useState(null)
+  const [deletingFile, setDeletingFile] = useState(null)
+  /** Filename of the sticker that refinements apply to; prompts stored per file for context */
+  const [selectedRefineSticker, setSelectedRefineSticker] = useState(null)
+  const [stickerPromptByFile, setStickerPromptByFile] = useState({})
 
   const trendName = selectedTrend
     ? (selectedTrend.trend_name || selectedTrend.name || 'selected trend')
@@ -74,6 +78,17 @@ function StickerStudio({ onNavigateTrends }) {
       setSelectedPhraseOption(null)
     }
   }, [conceptMode])
+
+  /** Keep refine selection valid when the gallery list changes (e.g. persisted stickers on load, deletes). */
+  useEffect(() => {
+    if (generatedStickers.length === 0) {
+      setSelectedRefineSticker(null)
+      return
+    }
+    setSelectedRefineSticker((sel) =>
+      sel && generatedStickers.includes(sel) ? sel : generatedStickers[generatedStickers.length - 1],
+    )
+  }, [generatedStickers])
 
   const getTrendContextText = () => {
     if (!selectedTrend) return ''
@@ -129,6 +144,8 @@ function StickerStudio({ onNavigateTrends }) {
         if (data.filename) {
           n += 1
           setGeneratedStickers(prev => [...prev, data.filename])
+          setStickerPromptByFile(prev => ({ ...prev, [data.filename]: prompt }))
+          setSelectedRefineSticker(data.filename)
         }
       } catch {
         /* one image failure should not block the rest */
@@ -194,6 +211,8 @@ function StickerStudio({ onNavigateTrends }) {
       })
       if (data.filename) {
         setGeneratedStickers(prev => [...prev, data.filename])
+        setStickerPromptByFile(prev => ({ ...prev, [data.filename]: prompt }))
+        setSelectedRefineSticker(data.filename)
       }
     } catch (e) {
       setStudioNotice(e.message || 'Image generation failed.')
@@ -202,11 +221,43 @@ function StickerStudio({ onNavigateTrends }) {
     }
   }
 
+  const handleRegenerateSticker = async (filename) => {
+    const prompt = stickerPromptByFile[filename]
+    if (!prompt) {
+      setStudioNotice('No saved prompt for this image. Generate from a concept card first, or pick another sticker.')
+      return
+    }
+    if (loadingImage) return
+    setLoadingImage(true)
+    setStudioNotice('')
+    try {
+      const data = await studioPost('/api/studio/generate-image', {
+        prompt,
+        parent_topic: parentTopic,
+        moment: trendName,
+      })
+      if (data.filename) {
+        setGeneratedStickers(prev => [...prev, data.filename])
+        setStickerPromptByFile(prev => ({ ...prev, [data.filename]: prompt }))
+        setSelectedRefineSticker(data.filename)
+      }
+    } catch (e) {
+      setStudioNotice(e.message || 'Regenerate failed.')
+    } finally {
+      setLoadingImage(false)
+    }
+  }
+
   const handleRefinement = async () => {
     if (!refinement.trim()) return
+    if (!selectedRefineSticker) {
+      setStudioNotice('Click a sticker in step 3 to choose which one to refine.')
+      return
+    }
     setLoadingImage(true)
-    const base = selectedConcept
-      ? `${refinement}\n\nReference concept: ${selectedConcept.visual_description || selectedConcept.concept_description || ''}`
+    const prior = stickerPromptByFile[selectedRefineSticker] || ''
+    const base = prior
+      ? `${refinement}\n\nRevise this die-cut sticker design. The previous generation brief was:\n${prior}\n\nApply the refinement above. Keep print-ready edges and a clean sticker silhouette.`
       : `${refinement}\n\nTopic: ${trendName}${parentTopic ? `; parent: ${parentTopic}` : ''}`
     try {
       const data = await studioPost('/api/studio/generate-image', {
@@ -216,12 +267,43 @@ function StickerStudio({ onNavigateTrends }) {
       })
       if (data.filename) {
         setGeneratedStickers(prev => [...prev, data.filename])
+        setStickerPromptByFile(prev => ({ ...prev, [data.filename]: base }))
+        setSelectedRefineSticker(data.filename)
       }
     } catch (e) {
       setStudioNotice(e.message || 'Refinement failed.')
     } finally {
       setLoadingImage(false)
       setRefinement('')
+    }
+  }
+
+  const handleDeleteSticker = async (filename) => {
+    setDeletingFile(filename)
+    setStudioNotice('')
+    try {
+      const res = await fetch(`${API_BASE}/api/studio/sticker/${encodeURIComponent(filename)}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.status === 'error') {
+        throw new Error(data.error || `Delete failed (${res.status})`)
+      }
+      setGeneratedStickers(prev => {
+        const next = prev.filter(f => f !== filename)
+        setStickerPromptByFile((p) => {
+          const copy = { ...p }
+          delete copy[filename]
+          return copy
+        })
+        setSelectedRefineSticker((sel) => {
+          if (sel !== filename) return sel
+          return next.length ? next[next.length - 1] : null
+        })
+        return next
+      })
+    } catch (e) {
+      setStudioNotice(e.message || 'Could not delete sticker.')
+    } finally {
+      setDeletingFile(null)
     }
   }
 
@@ -333,7 +415,7 @@ function StickerStudio({ onNavigateTrends }) {
                   <button
                     className="generate-image-btn"
                     onClick={() => handleGenerateImage(concept)}
-                    disabled={studioBusy || chatLoading}
+                    disabled={studioBusy}
                   >
                     {loadingImage && selectedConcept === concept ? 'Generating...' : 'Generate Image'}
                   </button>
@@ -359,16 +441,42 @@ function StickerStudio({ onNavigateTrends }) {
           </div>
         )}
         {generatedStickers.length > 0 && (
+          <p className="studio-hint studio-refine-hint">
+            Click a sticker tile (image or empty area) to choose which one to refine. Selected:{' '}
+            <span className="studio-refine-filename">{selectedRefineSticker || '—'}</span>
+          </p>
+        )}
+        {generatedStickers.length > 0 && (
           <div className="stickers-grid">
-            {generatedStickers.map((filename, i) => (
-              <div key={`${filename}-${i}`} className="generated-sticker-card">
-                <img
-                  src={`${API_BASE}/stickers/${filename}`}
-                  alt={`Sticker ${i + 1}`}
-                  className="generated-sticker-img"
-                  onError={(e) => { e.target.style.opacity = 0.3 }}
-                />
-                <div className="sticker-actions">
+            {generatedStickers.map((filename, i) => {
+              const isRefineSelected = selectedRefineSticker === filename
+              return (
+              <div
+                key={`${filename}-${i}`}
+                className={`generated-sticker-card ${isRefineSelected ? 'selected-sticker' : ''}`}
+                onClick={() => setSelectedRefineSticker(filename)}
+                role="group"
+                aria-label={
+                  isRefineSelected
+                    ? `Selected sticker ${i + 1}, ${filename}. Use Refine below.`
+                    : `Sticker ${i + 1}, ${filename}. Click to select for refinement.`
+                }
+                data-selected={isRefineSelected ? 'true' : undefined}
+              >
+                <div className="generated-sticker-preview">
+                  <img
+                    src={`${API_BASE}/stickers/${filename}`}
+                    alt=""
+                    className="generated-sticker-img"
+                    onError={(e) => { e.target.style.opacity = 0.3 }}
+                  />
+                  {isRefineSelected ? (
+                    <span className="sticker-selected-badge">Selected for refine</span>
+                  ) : (
+                    <span className="sticker-select-cta" aria-hidden="true">Click to select</span>
+                  )}
+                </div>
+                <div className="sticker-actions" onClick={(e) => e.stopPropagation()}>
                   <a
                     href={`${API_BASE}/stickers/${filename}`}
                     download={filename}
@@ -376,37 +484,50 @@ function StickerStudio({ onNavigateTrends }) {
                   >
                     Download
                   </a>
+                  <SaveToLibraryButton sourceFilename={filename} disabled={studioBusy || deletingFile} />
                   <button
                     className="regenerate-btn"
-                    onClick={() => {
-                      if (selectedConcept) handleGenerateImage(selectedConcept)
-                    }}
-                    disabled={studioBusy}
+                    type="button"
+                    onClick={() => handleRegenerateSticker(filename)}
+                    disabled={studioBusy || deletingFile}
                   >
                     Regenerate
                   </button>
+                  <button
+                    type="button"
+                    className="delete-sticker-btn"
+                    onClick={() => handleDeleteSticker(filename)}
+                    disabled={studioBusy || deletingFile}
+                    aria-label="Delete sticker"
+                  >
+                    {deletingFile === filename ? '…' : 'Delete'}
+                  </button>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </section>
 
       <div className="studio-refinement">
+        <p className="studio-refine-caption">
+          Refine the <strong>selected</strong> sticker (step 3). Adds a new variation; original stays until you delete it.
+        </p>
         <div className="input-wrap">
           <textarea
             className="chat-input"
             value={refinement}
             onChange={e => setRefinement(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefinement() } }}
-            placeholder="Refine your stickers... (e.g. 'make it more pastel', 'add sparkles')"
+            placeholder={selectedRefineSticker ? `Refine ${selectedRefineSticker}… (e.g. more pastel, bolder outline)` : 'Select a sticker in step 3 first, then describe changes…'}
             rows={1}
-            disabled={studioBusy}
+            disabled={studioBusy || !selectedRefineSticker}
           />
           <button
             className="send-btn"
             onClick={handleRefinement}
-            disabled={!refinement.trim() || studioBusy}
+            disabled={!refinement.trim() || studioBusy || !selectedRefineSticker}
             aria-label="Send refinement"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
