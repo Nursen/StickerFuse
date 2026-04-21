@@ -34,3 +34,15 @@ out/
 outputs/
 tiktok_shots/
 tiktok_*_results.json
+
+# Claude Code local settings
+.claude/
+
+# Course documents (not part of the app)
+PROPOSAL.md
+
+# User journey drafts
+user journey draft/
+
+# Frontend build artifacts
+frontend/dist/
