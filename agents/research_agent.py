@@ -88,11 +88,35 @@ def _get_agent(name: str) -> Agent:
             model_settings=GoogleModelSettings(temperature=0.4, max_tokens=4096),
             retries=3,
         )
-    elif name == "opportunities":
-        # Creative text gen — Flash-Lite is 5x cheaper and good enough
+    elif name == "opps_favorites":
         agent = Agent(
             model=GoogleModel(_FLASH_LITE, provider=provider),
-            system_prompt=_OPPORTUNITIES_PROMPT,
+            system_prompt=_FAVORITES_PROMPT,
+            output_type=list[StickerOpportunity],
+            model_settings=GoogleModelSettings(temperature=0.5, max_tokens=3072),
+            retries=3,
+        )
+    elif name == "opps_mashups":
+        agent = Agent(
+            model=GoogleModel(_FLASH_LITE, provider=provider),
+            system_prompt=_MASHUPS_PROMPT,
+            output_type=list[StickerOpportunity],
+            model_settings=GoogleModelSettings(temperature=0.9, max_tokens=3072),
+            retries=3,
+        )
+    elif name == "opps_deep":
+        agent = Agent(
+            model=GoogleModel(_FLASH_LITE, provider=provider),
+            system_prompt=_DEEP_CUTS_PROMPT,
+            output_type=list[StickerOpportunity],
+            model_settings=GoogleModelSettings(temperature=0.7, max_tokens=3072),
+            retries=3,
+        )
+    elif name == "opportunities":
+        # Legacy single-prompt (used by remix)
+        agent = Agent(
+            model=GoogleModel(_FLASH_LITE, provider=provider),
+            system_prompt=_MASHUPS_PROMPT,
             output_type=list[StickerOpportunity],
             model_settings=GoogleModelSettings(temperature=0.8, max_tokens=4096),
             retries=3,
@@ -153,39 +177,65 @@ suggest a sticker angle, rate confidence. Aim for 5-10 insights ranked by
 sticker potential. Skip anything too generic.\
 """
 
-_OPPORTUNITIES_PROMPT = """\
-You are a merch designer creating a DIVERSE sticker collection. You need a healthy \
-mix of straightforward fan favorites AND clever internet culture mashups.
+_FAVORITES_PROMPT = """\
+You create CLASSIC FAN FAVORITE stickers — the bestsellers. Simple, pretty, \
+immediately recognizable. These are what casual fans buy.
 
-Generate 12-15 concepts across these tiers:
+Generate 5 concepts. Focus on:
+- Ship names in beautiful typography ("Kanthony" in elegant Regency script)
+- Character names as identity statements ("Team Benedict", "Penelope Stan")
+- Iconic quotes in their original form ("I burn for you", "Dearest Reader")
+- Clean aesthetic pieces — the recognizable symbol, logo, or icon
+- Pretty visual stickers of beloved characters or objects
 
-BROAD APPEAL (4-5 stickers) — simple, pretty, immediately recognizable:
-- Ship names in beautiful typography ("Kanthony" in elegant script)
-- Character names or titles as identity statements ("Team Benedict")
-- Iconic quotes in their original form ("I burn for you")
-- Clean aesthetic pieces (the Bridgerton bee, a recognizable symbol)
-- These are the BESTSELLERS. Simple, pretty, identity-signaling.
+These do NOT need puns, internet slang, or cleverness. They need to be \
+beautiful, recognizable, and say "I love this thing." \
+Typography, elegance, and emotional resonance matter most.
 
-CLEVER MASHUPS (4-5 stickers) — fandom × internet culture collisions:
-- Character traits × Gen Z slang ("Viscount Rizz", "Let Benedict Cook")
-- Iconic moments × meme formats ("Be My Mistress" as reclaimed humor)
-- Fandom in-jokes × trending phrases ("No Icks, Just Bees")
-- These make fans laugh and share. The punchline sells it.
+All estimated_appeal should be "broad".
 
-DEEP CUTS (3-4 stickers) — for the hardcore fans:
-- Niche references only subreddit regulars would get
-- Specific scene callbacks, obscure character moments
-- Community in-jokes that signal "I'm one of you"
+For each: concept, exact sticker text, visual sketch, why now, who buys it, emotional hook.\
+"""
 
-Rules:
-- Text should be SHORT (1-6 words ideal)
-- Not everything needs to be a pun. "Kanthony" in pretty script IS a sticker.
-- Not everything needs internet slang. "I burn for you" IS a sticker.
-- Mix text-only, image-only, and text+image across the set
-- The collection should feel cohesive as a pack, not random
+_MASHUPS_PROMPT = """\
+You create WITTY MASHUP stickers — fandom × internet culture collisions. \
+The punchline sells these.
 
-For each: specific concept, exact sticker text, visual sketch, why NOW, \
-who buys it, emotional hook, and estimated appeal level.\
+The formula: [specific cultural reference] × [trending internet phrase] = sticker gold
+
+Examples:
+- "Viscount Rizz" (character charisma × Gen Z slang)
+- "Let Benedict Cook" (character moment × meme format)
+- "No Icks, Just Bees" (fandom symbol × dating culture)
+- "'Be My Mistress' in Regency calligraphy" (controversial moment as humor)
+
+Generate 5 concepts. Each MUST have:
+- A clear fandom reference
+- A clear internet culture element (meme, slang, format)
+- A punchline — the collision between the two should make fans laugh
+
+All estimated_appeal should be "fandom".
+
+For each: concept, exact sticker text, visual sketch, why now, who buys it, emotional hook.\
+"""
+
+_DEEP_CUTS_PROMPT = """\
+You create DEEP CUT stickers — for hardcore fans and subreddit regulars only. \
+These signal "I am DEEP in this fandom."
+
+Generate 4 concepts. Focus on:
+- Niche scene references that only dedicated fans would recognize
+- Community in-jokes from Reddit/TikTok/Twitter discourse
+- Specific character moments that sparked intense discussion
+- Callbacks to obscure but beloved details
+- The kind of thing that makes a fan point at your laptop and say "WAIT you know about THAT?!"
+
+These should be obscure enough that casual fans wouldn't get them, but \
+immediately recognizable to anyone in the community.
+
+All estimated_appeal should be "deep_cut".
+
+For each: concept, exact sticker text, visual sketch, why now, who buys it, emotional hook.\
 """
 
 
@@ -278,21 +328,41 @@ def synthesize_insights(
 # Step 4: Sticker Opportunities (Flash-Lite — cheap)
 # ---------------------------------------------------------------------------
 
+def _run_opp_tier(tier_name: str, context: str) -> list[StickerOpportunity]:
+    """Run one opportunity tier agent."""
+    agent = _get_agent(tier_name)
+    try:
+        result = _retry(lambda: agent.run_sync(
+            f"Generate sticker concepts:\n\n{context}"
+        ))
+        return result.output
+    except Exception as e:
+        print(f"  ⚠ {tier_name} failed: {e}", file=sys.stderr)
+        return []
+
+
 def generate_opportunities(
     universe: UniverseMap,
     insights: list[CulturalInsight],
 ) -> list[StickerOpportunity]:
-    agent = _get_agent("opportunities")
+    """Run 3 focused prompts in parallel, merge results."""
     context = json.dumps({
         "universe": universe.model_dump(),
         "insights": [i.model_dump() for i in insights],
     }, indent=2, ensure_ascii=False)
 
-    result = _retry(lambda: agent.run_sync(
-        f"Generate sticker opportunities:\n\n{context}\n\n"
-        "Create 8-12 concepts. Mix broad, fandom, and deep cuts."
-    ))
-    return result.output
+    tiers = ["opps_favorites", "opps_mashups", "opps_deep"]
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_run_opp_tier, t, context): t for t in tiers}
+        all_opps = []
+        for future in as_completed(futures):
+            tier = futures[future]
+            results = future.result()
+            print(f"  ✓ {tier}: {len(results)} concepts", file=sys.stderr)
+            all_opps.extend(results)
+
+    return all_opps
 
 
 # ---------------------------------------------------------------------------
