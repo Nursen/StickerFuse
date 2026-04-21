@@ -80,7 +80,7 @@ function FandomDNAPanel({ dna }) {
 }
 
 function TrendPulse({ onNavigateStudio }) {
-  const { setSelectedTrend, setViralBites } = useTrend()
+  const { setSelectedTrend, setViralBites, setStickerIdeas, setGeneratedStickers } = useTrend()
   const [searchTopic, setSearchTopic] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
   const [progressMsg, setProgressMsg] = useState('')
@@ -154,7 +154,12 @@ function TrendPulse({ onNavigateStudio }) {
   const handleCreateSelected = () => {
     if (selectedIdeas.size === 0 || !merchResult) return
     const ideas = merchResult.sticker_ideas.filter((_, i) => selectedIdeas.has(i))
-    // Pass selected ideas to Studio as viral bites (they have text + visual descriptions)
+
+    // Clear previous Studio state so it doesn't show stale data
+    setStickerIdeas([])
+    setGeneratedStickers([])
+
+    // Pass selected ideas to Studio as viral bites
     setViralBites(ideas.map(idea => ({
       text: idea.text_on_sticker || idea.concept,
       context: `${idea.fandom_element} × ${idea.internet_element}`,

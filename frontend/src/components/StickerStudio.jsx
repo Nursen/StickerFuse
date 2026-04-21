@@ -19,10 +19,14 @@ async function studioPost(path, body) {
 function StickerStudio({ onNavigateTrends }) {
   const {
     selectedTrend,
+    viralBites,
     stickerIdeas, setStickerIdeas,
     generatedStickers, setGeneratedStickers,
     chatLoading,
   } = useTrend()
+
+  // If we arrived with pre-selected merch ideas (from TrendPulse), use them as sticker concepts
+  const hasPreloadedIdeas = viralBites && viralBites.length > 0 && stickerIdeas.length === 0
 
   const [selectedConcept, setSelectedConcept] = useState(null)
   const [loadingConcepts, setLoadingConcepts] = useState(false)
@@ -46,6 +50,23 @@ function StickerStudio({ onNavigateTrends }) {
     setSelectedPhraseOption(null)
     setStudioNotice('')
   }, [selectedTrend?.name, selectedTrend?.trend_name])
+
+  // Auto-populate sticker concepts from merch ideation selections
+  useEffect(() => {
+    if (hasPreloadedIdeas) {
+      const preloaded = viralBites.map(bite => ({
+        concept_description: bite.text,
+        visual_description: bite.visual_description || bite.text,
+        art_style: '',
+        layout_type: bite.visual_description ? 'text_and_image' : 'text_only',
+        color_palette: [],
+        text_content: bite.text,
+        viral_bite_ref: bite.context || '',
+      }))
+      setStickerIdeas(preloaded)
+      setStudioNotice(`${preloaded.length} concepts loaded from your selections. Click "Generate Image" to create stickers.`)
+    }
+  }, [hasPreloadedIdeas])
 
   useEffect(() => {
     if (conceptMode !== 'phrase') {
