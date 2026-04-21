@@ -453,9 +453,9 @@ body {
 
 .download-btn:hover { opacity: 0.85; }
 
-/* ===== TREND PULSE ===== */
+/* ===== TREND PULSE (merch ideation first) ===== */
 .trend-pulse {
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
@@ -929,6 +929,163 @@ body {
   padding: 4px 0 4px 10px;
   margin: 6px 0;
   line-height: 1.4;
+}
+
+/* --- Idea Cards (merch ideation results) --- */
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.create-selected-btn {
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  border: none;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+.create-selected-btn:hover { opacity: 0.9; transform: scale(1.02); }
+
+.ideas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.idea-card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+.idea-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+.idea-selected { border-color: var(--accent); background: rgba(99, 102, 241, 0.08); }
+
+.idea-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.idea-emoji { font-size: 1.3rem; }
+.appeal-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.idea-sticker-text {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 8px 0;
+  line-height: 1.3;
+}
+
+.idea-concept {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 6px 0 10px;
+  line-height: 1.4;
+}
+
+.idea-collision {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.collision-tag {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.fandom-tag { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+.internet-tag { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.collision-x { color: var(--text-muted); font-size: 0.75rem; }
+
+.idea-why {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.idea-check {
+  margin-top: 8px;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* Fandom DNA panel */
+.fandom-dna-panel, .vernacular-panel {
+  margin-bottom: 16px;
+}
+.fandom-dna-toggle, .vernacular-toggle {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 8px 0;
+}
+.fandom-dna-content { padding: 10px 0; }
+.dna-section { margin-bottom: 8px; }
+.dna-label { font-size: 0.78rem; color: var(--text-muted); margin-right: 6px; }
+.dna-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.dna-tag {
+  font-size: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: var(--text);
+}
+.ship-tag { border-color: #ec4899; color: #f472b6; }
+
+/* Recommended pack */
+.recommended-pack {
+  margin-bottom: 20px;
+  padding: 14px;
+  background: rgba(234, 179, 8, 0.06);
+  border: 1px solid rgba(234, 179, 8, 0.2);
+  border-radius: 10px;
+}
+.pack-title { font-size: 0.9rem; margin-bottom: 8px; }
+.pack-items { display: flex; flex-wrap: wrap; gap: 8px; }
+.pack-item {
+  font-size: 0.82rem;
+  background: rgba(234, 179, 8, 0.12);
+  color: #fbbf24;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+/* Vernacular tags */
+.vernacular-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+.vernacular-tag {
+  font-size: 0.75rem;
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  padding: 3px 10px;
+  border-radius: 6px;
 }
 
 /* ===== STICKER STUDIO ===== */
