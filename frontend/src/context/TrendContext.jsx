@@ -22,6 +22,7 @@ export function TrendProvider({ children }) {
   const [stickerIdeas, setStickerIdeasRaw] = useState(() => loadState('stickerIdeas', []))
   const [viralBites, setViralBitesRaw] = useState(() => loadState('viralBites', []))
   const [generatedStickers, setGeneratedStickersRaw] = useState(() => loadState('generatedStickers', []))
+  const [moments, setMomentsRaw] = useState(() => loadState('moments', null))
   const [messages, setMessages] = useState(() => loadState('messages', []))
   const [chatLoading, setChatLoading] = useState(false)
 
@@ -31,6 +32,7 @@ export function TrendProvider({ children }) {
   const setStickerIdeas = (v) => { const val = typeof v === 'function' ? v(stickerIdeas) : v; setStickerIdeasRaw(val); saveState('stickerIdeas', val) }
   const setViralBites = (v) => { const val = typeof v === 'function' ? v(viralBites) : v; setViralBitesRaw(val); saveState('viralBites', val) }
   const setGeneratedStickers = (v) => { const val = typeof v === 'function' ? v(generatedStickers) : v; setGeneratedStickersRaw(val); saveState('generatedStickers', val) }
+  const setMoments = (v) => { const val = typeof v === 'function' ? v(moments) : v; setMomentsRaw(val); saveState('moments', val) }
 
   // Also persist messages
   useEffect(() => { saveState('messages', messages) }, [messages])
@@ -94,6 +96,7 @@ export function TrendProvider({ children }) {
     stickerIdeas, setStickerIdeas,
     viralBites, setViralBites,
     generatedStickers, setGeneratedStickers,
+    moments, setMoments,
     messages, setMessages,
     chatLoading,
     sendChatMessage,

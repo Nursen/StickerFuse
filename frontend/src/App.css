@@ -816,6 +816,121 @@ body {
   transform: translateY(-1px);
 }
 
+/* ===== VIRAL MOMENTS ===== */
+.moments-section {
+  margin-top: 32px;
+}
+
+.section-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.section-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.community-vibe {
+  font-size: 0.82rem;
+  color: #a78bfa;
+  font-style: italic;
+  margin-bottom: 16px;
+}
+
+.moments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.moment-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid #7c3aed;
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.moment-card:hover {
+  border-color: #a78bfa;
+  transform: translateY(-2px);
+}
+
+.moment-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.moment-name {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.buzz-badge {
+  font-size: 0.68rem;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.moment-description {
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.moment-why {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.moment-why-label {
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.moment-badges {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.potential-badge {
+  font-size: 0.68rem;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.moment-quotes {
+  margin-bottom: 10px;
+}
+
+.moment-quote {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  border-left: 2px solid #7c3aed;
+  padding: 4px 0 4px 10px;
+  margin: 6px 0;
+  line-height: 1.4;
+}
+
 /* ===== STICKER STUDIO ===== */
 .sticker-studio {
   max-width: 900px;
@@ -1320,6 +1435,10 @@ body {
   }
 
   .trend-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .moments-grid {
     grid-template-columns: 1fr;
   }
 

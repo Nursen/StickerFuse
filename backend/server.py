@@ -266,15 +266,17 @@ async def analyze_trends_direct(req: AnalyzeRequest):
     google_tf = _GOOGLE_TIMEFRAME.get(lookback, "now 7-d")
     wiki_days = _WIKI_DAYS.get(lookback, 14)
 
-    # Track progress
-    progress = {"sources_total": 5, "sources_done": 0, "errors": [], "lookback": lookback}
+    # Track progress — 6 sources now (Reddit comments + moment detection = 1 extra step)
+    progress = {"sources_total": 6, "sources_done": 0, "errors": [], "lookback": lookback}
 
     async def mine_reddit():
+        """Mine Reddit WITH comments for the top posts."""
         try:
             from miners.reddit_miner import mine_multiple_subreddits
             return await _run_in_thread(
                 mine_multiple_subreddits, subreddits,
                 limit=limit, sort="top", time_filter=reddit_tf,
+                include_comments=True, max_comment_posts=10,
             )
         except Exception as e:
             progress["errors"].append(f"Reddit: {e}")
@@ -333,28 +335,99 @@ async def analyze_trends_direct(req: AnalyzeRequest):
         )
     )
 
-    # Score with cross-platform correlation
+    # Run trend scoring and moment detection in parallel
+    # (both depend on reddit_data being ready, which it is after the gather above)
+
+    async def score_all():
+        try:
+            from miners.trend_scorer import score_trends
+            return await _run_in_thread(
+                score_trends,
+                reddit_data,
+                trends_data,
+                youtube_data,
+                wikipedia_data,
+                web_search_data,
+            )
+        except Exception as e:
+            progress["errors"].append(f"Trend scoring: {e}")
+            return None
+        finally:
+            progress["sources_done"] += 1
+
+    async def detect_moments():
+        if not reddit_data:
+            return None
+        try:
+            from agents.moment_detector import detect_viral_moments
+            return await _run_in_thread(detect_viral_moments, topic, reddit_data)
+        except Exception as e:
+            progress["errors"].append(f"Moment detection: {e}")
+            return None
+
+    async def ideate():
+        try:
+            from agents.merch_ideation_agent import ideate_merch
+            # Pass community context from Reddit comments if available
+            ctx = ""
+            if reddit_data:
+                snippets = []
+                for sub in reddit_data.get("subreddits", []):
+                    for post in sub.get("posts", [])[:5]:
+                        snippets.append(post.get("title", ""))
+                        for c in post.get("top_comments", [])[:3]:
+                            snippets.append(c.get("body", "")[:100])
+                ctx = "\n".join(snippets[:30])
+            return await _run_in_thread(ideate_merch, topic, community_context=ctx)
+        except Exception as e:
+            progress["errors"].append(f"Merch ideation: {e}")
+            return None
+
+    report, moment_report, merch_result = await asyncio.gather(
+        score_all(), detect_moments(), ideate()
+    )
+
+    result = {"status": "ok", "progress": progress}
+
+    if report:
+        result["report"] = report.model_dump()
+    if moment_report:
+        result["moments"] = moment_report.model_dump()
+    if merch_result:
+        result["merch"] = merch_result.model_dump()
+
+    if not report and not moment_report and not merch_result:
+        result["status"] = "error"
+        result["error"] = "All analysis failed — check progress.errors"
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Merch ideation endpoint — fandom × internet culture collision
+# ---------------------------------------------------------------------------
+
+
+class MerchIdeationRequest(BaseModel):
+    topic: str
+    vibe: str = ""  # "ironic", "wholesome", "unhinged", "minimalist"
+    community_context: str = ""
+
+
+@app.post("/api/ideate")
+async def ideate_merch_endpoint(req: MerchIdeationRequest):
+    """Generate sticker concepts by colliding fandom DNA with internet culture."""
+    if not req.topic.strip():
+        return JSONResponse({"status": "error", "error": "topic is required"}, status_code=400)
+
     try:
-        from miners.trend_scorer import score_trends
-        report = await _run_in_thread(
-            score_trends,
-            reddit_data,
-            trends_data,
-            youtube_data,
-            wikipedia_data,
-            web_search_data,
+        from agents.merch_ideation_agent import ideate_merch
+        result = await _run_in_thread(
+            ideate_merch, req.topic.strip(), vibe=req.vibe, community_context=req.community_context
         )
-        return {
-            "status": "ok",
-            "report": report.model_dump(),
-            "progress": progress,
-        }
+        return {"status": "ok", "data": result.model_dump()}
     except Exception as exc:
-        return {
-            "status": "error",
-            "error": str(exc),
-            "progress": progress,
-        }
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 
 
 # ---------------------------------------------------------------------------

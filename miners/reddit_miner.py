@@ -33,12 +33,55 @@ def _fetch_json(url: str) -> dict:
         raise RuntimeError(f"Reddit returned {e.code} for {url}: {e.reason}") from e
 
 
+def _fetch_top_comments(permalink: str, limit: int = 15) -> list[dict]:
+    """Fetch top comments for a Reddit post via public JSON.
+
+    Args:
+        permalink: Post permalink (e.g. /r/bridgerton/comments/abc123/title/)
+        limit: Max comments to fetch.
+
+    Returns list of:
+        {"body": str, "score": int, "author": str}
+    """
+    url = f"https://www.reddit.com{permalink}.json?limit={limit}&sort=top"
+    try:
+        data = _fetch_json(url)
+    except Exception as e:
+        print(f"  Warning: could not fetch comments for {permalink}: {e}", file=sys.stderr)
+        return []
+
+    # Reddit returns [post_listing, comment_listing]
+    if not isinstance(data, list) or len(data) < 2:
+        return []
+
+    children = data[1].get("data", {}).get("children", [])
+    comments = []
+    for child in children:
+        if child.get("kind") != "t1":
+            continue
+        d = child.get("data", {})
+        body = d.get("body", "")
+        if not body or body == "[deleted]" or body == "[removed]":
+            continue
+        comments.append({
+            "body": body[:500],  # cap length to keep payloads sane
+            "score": d.get("score", 0),
+            "author": d.get("author", "[deleted]"),
+        })
+
+    # Sort by score descending, take top N
+    comments.sort(key=lambda c: c["score"], reverse=True)
+    return comments[:limit]
+
+
 def mine_subreddit(
     subreddit_name: str,
     *,
     limit: int = 25,
     sort: str = "hot",
     time_filter: str = "week",
+    include_comments: bool = False,
+    max_comment_posts: int = 5,
 ) -> dict:
     """Fetch trending posts from a subreddit via public JSON endpoint.
 
@@ -47,6 +90,8 @@ def mine_subreddit(
         limit: Number of posts to fetch (max 100 per request).
         sort: Sort method — "hot", "top", "rising", "new".
         time_filter: Time filter for "top" sort — "hour", "day", "week", "month", "year", "all".
+        include_comments: If True, fetch top comments for the most-engaged posts.
+        max_comment_posts: How many top posts to fetch comments for (by score).
 
     Returns:
         Dict with subreddit info and posts.
@@ -98,6 +143,23 @@ def mine_subreddit(
         }
         posts.append(post)
 
+    # Fetch top comments for the most-engaged posts
+    if include_comments and posts:
+        # Sort by score to pick the most interesting posts for comment mining
+        ranked = sorted(enumerate(posts), key=lambda x: x[1].get("score", 0), reverse=True)
+        for rank, (idx, p) in enumerate(ranked[:max_comment_posts]):
+            # Extract permalink from URL: https://reddit.com/r/sub/comments/id/title/
+            url_str = p.get("url", "")
+            permalink = url_str.replace("https://reddit.com", "").replace("https://www.reddit.com", "")
+            if not permalink:
+                continue
+            print(f"  Fetching comments for: {p.get('title', '')[:60]}...", file=sys.stderr)
+            comments = _fetch_top_comments(permalink)
+            posts[idx]["top_comments"] = comments
+            # Rate limit between comment fetches (skip after last)
+            if rank < max_comment_posts - 1:
+                time.sleep(_REQUEST_DELAY)
+
     return {
         "subreddit": subreddit_name,
         "sort": sort,
@@ -110,13 +172,21 @@ def mine_subreddit(
 
 def mine_multiple_subreddits(
     subreddit_names: list[str],
+    *,
+    include_comments: bool = False,
+    max_comment_posts: int = 5,
     **kwargs,
 ) -> dict:
     """Mine multiple subreddits and combine results."""
     results = []
     for i, name in enumerate(subreddit_names):
         print(f"Mining r/{name}...", file=sys.stderr)
-        results.append(mine_subreddit(name, **kwargs))
+        results.append(mine_subreddit(
+            name,
+            include_comments=include_comments,
+            max_comment_posts=max_comment_posts,
+            **kwargs,
+        ))
         # Rate limit: wait between requests (skip after last one)
         if i < len(subreddit_names) - 1:
             time.sleep(_REQUEST_DELAY)
@@ -144,6 +214,8 @@ def main() -> None:
         "--time-filter", choices=["hour", "day", "week", "month", "year", "all"],
         default="week", help="Time filter for 'top' sort (default: week)",
     )
+    parser.add_argument("--include-comments", action="store_true", help="Fetch top comments for most-engaged posts")
+    parser.add_argument("--max-comment-posts", type=int, default=5, help="How many top posts to fetch comments for (default: 5)")
     parser.add_argument("-o", "--out", type=Path, default=None, help="Write JSON output here")
     args = parser.parse_args()
 
@@ -152,6 +224,8 @@ def main() -> None:
         limit=args.limit,
         sort=args.sort,
         time_filter=args.time_filter,
+        include_comments=args.include_comments,
+        max_comment_posts=args.max_comment_posts,
     )
 
     text = json.dumps(result, indent=2, ensure_ascii=False)

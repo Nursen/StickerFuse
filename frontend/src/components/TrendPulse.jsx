@@ -176,10 +176,53 @@ function TrendCard({ trend, onExpand, expanded, onMakeStickers }) {
   )
 }
 
+const BUZZ_COLORS = { HOT: '#ef4444', WARM: '#f59e0b', NICHE: '#3b82f6' }
+const POTENTIAL_COLORS = { HIGH: '#22c55e', MEDIUM: '#eab308', LOW: '#6b7280' }
+
+function MomentCard({ moment, onMakeStickers }) {
+  const buzz = (moment.estimated_buzz || '').toUpperCase()
+  const potential = (moment.sticker_potential || '').split(/[^A-Z]/i)[0].toUpperCase()
+
+  return (
+    <div className="moment-card">
+      <div className="moment-card-top">
+        <h3 className="moment-name">{moment.name}</h3>
+        <span className="buzz-badge" style={{ background: `${BUZZ_COLORS[buzz] || '#6b7280'}22`, color: BUZZ_COLORS[buzz] || '#6b7280' }}>
+          {buzz || 'N/A'}
+        </span>
+      </div>
+
+      <p className="moment-description">{moment.description}</p>
+
+      <div className="moment-why">
+        <span className="moment-why-label">Why viral:</span> {moment.why_its_viral}
+      </div>
+
+      <div className="moment-badges">
+        <span className="potential-badge" style={{ background: `${POTENTIAL_COLORS[potential] || '#6b7280'}22`, color: POTENTIAL_COLORS[potential] || '#6b7280' }}>
+          Sticker: {potential || '?'}
+        </span>
+      </div>
+
+      {moment.sample_quotes && moment.sample_quotes.length > 0 && (
+        <div className="moment-quotes">
+          {moment.sample_quotes.slice(0, 3).map((q, i) => (
+            <blockquote key={i} className="moment-quote">&ldquo;{q}&rdquo;</blockquote>
+          ))}
+        </div>
+      )}
+
+      <button className="make-stickers-btn" onClick={(e) => { e.stopPropagation(); onMakeStickers() }}>
+        Make Stickers &rarr;
+      </button>
+    </div>
+  )
+}
+
 const PROGRESS_SOURCES = ['Reddit', 'Google Trends', 'YouTube', 'Wikipedia', 'Web Search']
 
 function TrendPulse({ onNavigateStudio }) {
-  const { trends, setTrends, setSelectedTrend } = useTrend()
+  const { trends, setTrends, setSelectedTrend, moments, setMoments } = useTrend()
   const [searchTopic, setSearchTopic] = useState('')
   const [lookback, setLookback] = useState('week')
   const [expandedIdx, setExpandedIdx] = useState(null)
@@ -190,18 +233,19 @@ function TrendPulse({ onNavigateStudio }) {
     if (!searchTopic.trim() || analyzing) return
     setAnalyzing(true)
     setTrends([])
+    setMoments(null)
     setProgressMsg('Starting analysis across 5 platforms...')
 
     // Animate progress messages
     const msgs = [
-      'Mining Reddit for hot posts...',
+      'Mining Reddit posts + comments...',
       'Checking Google Trends for search spikes...',
       'Scanning YouTube for viral videos...',
       'Analyzing Wikipedia pageview spikes...',
       'Searching web for cross-platform mentions...',
+      'Detecting viral moments from Reddit comments (Gemini)...',
       'Cross-correlating signals across platforms...',
       'Running sentiment analysis...',
-      'Detecting statistical spikes (Poisson)...',
       'Scoring and ranking trends...',
     ]
     let msgIdx = 0
@@ -223,9 +267,14 @@ function TrendPulse({ onNavigateStudio }) {
 
       if (data.report && data.report.trends) {
         setTrends(data.report.trends)
+        if (data.moments) {
+          setMoments(data.moments)
+        }
         const errCount = (data.progress?.errors || []).length
+        const momentCount = data.moments?.moments?.length || 0
         setProgressMsg(
           `Found ${data.report.trends.length} trends from ${data.report.total_posts_analyzed || 0} posts` +
+          (momentCount > 0 ? ` + ${momentCount} viral moments from comments` : '') +
           (errCount > 0 ? ` (${errCount} source${errCount > 1 ? 's' : ''} had issues)` : '')
         )
       } else if (data.error) {
@@ -281,6 +330,16 @@ function TrendPulse({ onNavigateStudio }) {
   const handleMakeStickers = (trend) => {
     const parent = searchTopic.trim() || undefined
     setSelectedTrend(parent ? { ...trend, parent_topic: parent } : { ...trend })
+    onNavigateStudio()
+  }
+
+  const handleMakeStickersMoment = (moment) => {
+    const parent = searchTopic.trim() || undefined
+    setSelectedTrend({
+      name: moment.name,
+      description: moment.description,
+      ...(parent ? { parent_topic: parent } : {}),
+    })
     onNavigateStudio()
   }
 
@@ -358,6 +417,24 @@ function TrendPulse({ onNavigateStudio }) {
             />
           ))}
         </div>
+      )}
+
+      {moments && moments.moments && moments.moments.length > 0 && (
+        <section className="moments-section">
+          <h2 className="section-title">Viral Moments</h2>
+          <p className="section-subtitle">
+            Specific scenes, quotes, and memes the community is buzzing about
+            ({moments.total_comments_analyzed} comments analyzed)
+          </p>
+          {moments.community_vibe && (
+            <p className="community-vibe">Community vibe: {moments.community_vibe}</p>
+          )}
+          <div className="moments-grid">
+            {moments.moments.map((moment, i) => (
+              <MomentCard key={i} moment={moment} onMakeStickers={() => handleMakeStickersMoment(moment)} />
+            ))}
+          </div>
+        </section>
       )}
     </div>
   )
