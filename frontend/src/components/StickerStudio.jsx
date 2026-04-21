@@ -68,28 +68,89 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
 
   const handleGenerate = async () => {
     setGenerating(true)
-    setNotice('')
-    const prompt = buildPrompt()
-    const requests = [1, 2, 3].map(() =>
-      fetch(`${API_BASE}/api/studio/generate-image`, {
+    setNotice('Creating 3 distinct creative directions...')
+
+    try {
+      // Step 1: Get 3 deliberately different visual directions from the variation agent
+      const varRes = await fetch(`${API_BASE}/api/studio/variations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, parent_topic: parentTopic, moment: stickerText }),
-      }).then(r => r.json()).catch(() => null)
-    )
-    const results = await Promise.all(requests)
-    const prevLen = allVersions.length
-    const newVersions = results
-      .filter(r => r?.filename)
-      .map(r => ({ filename: r.filename, prompt, timestamp: new Date().toISOString() }))
-    setAllVersions(prev => [...prev, ...newVersions])
-    if (newVersions.length > 0) {
-      setSelectedVersion(prevLen) // select first of the new batch
-      setNotice(`Generated ${newVersions.length} variation${newVersions.length > 1 ? 's' : ''}.`)
-    } else {
-      setNotice('Generation failed. Check your API key and try again.')
+        body: JSON.stringify({
+          sticker_text: stickerText,
+          art_style: selectedStyle,
+          layout: selectedLayout,
+          visual_direction: visualDirection,
+          color_mood: selectedColorMood,
+          context: parentTopic || activePack?.topic || '',
+        }),
+      })
+      const varData = await varRes.json()
+
+      if (!varRes.ok || !varData.variations?.length) {
+        // Fallback: use the manual prompt 3 times if variation agent fails
+        setNotice('Variation agent failed, generating with base prompt...')
+        const prompt = buildPrompt()
+        const requests = [1, 2, 3].map(() =>
+          fetch(`${API_BASE}/api/studio/generate-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, parent_topic: parentTopic, moment: stickerText }),
+          }).then(r => r.json()).catch(() => null)
+        )
+        const results = await Promise.all(requests)
+        const prevLen = allVersions.length
+        const newVersions = results
+          .filter(r => r?.filename)
+          .map(r => ({ filename: r.filename, prompt, label: 'variation', timestamp: new Date().toISOString() }))
+        setAllVersions(prev => [...prev, ...newVersions])
+        if (newVersions.length > 0) setSelectedVersion(prevLen)
+        setNotice(newVersions.length > 0 ? `Generated ${newVersions.length} variations.` : 'Generation failed.')
+        setGenerating(false)
+        return
+      }
+
+      // Step 2: Generate images from each distinct prompt in parallel
+      setNotice(`Generating ${varData.variations.length} distinct sticker designs...`)
+      const imageRequests = varData.variations.map(v =>
+        fetch(`${API_BASE}/api/studio/generate-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: v.image_prompt,
+            parent_topic: parentTopic,
+            moment: stickerText,
+          }),
+        }).then(r => r.json()).catch(() => null)
+      )
+      const imageResults = await Promise.all(imageRequests)
+
+      const prevLen = allVersions.length
+      const newVersions = imageResults
+        .map((r, i) => {
+          if (!r?.filename) return null
+          const v = varData.variations[i]
+          return {
+            filename: r.filename,
+            prompt: v.image_prompt,
+            label: v.variation_label,
+            what_makes_it_different: v.what_makes_it_different,
+            timestamp: new Date().toISOString(),
+          }
+        })
+        .filter(Boolean)
+
+      setAllVersions(prev => [...prev, ...newVersions])
+      if (newVersions.length > 0) {
+        setSelectedVersion(prevLen)
+        setNotice(`Generated ${newVersions.length} distinct variations: ${newVersions.map(v => v.label).join(', ')}`)
+      } else {
+        setNotice('Image generation failed. Check your API key and try again.')
+      }
+    } catch (err) {
+      setNotice(`Error: ${err.message}`)
+    } finally {
+      setGenerating(false)
     }
-    setGenerating(false)
   }
 
   const handleRefine = async () => {
@@ -309,7 +370,7 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
                       alt={`v${i + 1}`}
                       onError={e => { e.target.style.opacity = 0.3 }}
                     />
-                    <span className="version-label">v{i + 1}</span>
+                    <span className="version-label">{v.label || `v${i + 1}`}</span>
                   </div>
                 ))}
               </div>
@@ -321,6 +382,12 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
                     src={`${API_BASE}/stickers/${allVersions[selectedVersion].filename}`}
                     alt="Selected sticker preview"
                   />
+                  {allVersions[selectedVersion].label && (
+                    <div className="preview-label">{allVersions[selectedVersion].label}</div>
+                  )}
+                  {allVersions[selectedVersion].what_makes_it_different && (
+                    <p className="preview-note">{allVersions[selectedVersion].what_makes_it_different}</p>
+                  )}
                 </div>
               )}
 

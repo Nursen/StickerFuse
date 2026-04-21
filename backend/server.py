@@ -205,6 +205,35 @@ async def studio_suggest_phrases(req: StudioPhrasesRequest):
         return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 
 
+class VariationRequest(BaseModel):
+    sticker_text: str = Field(..., min_length=1, max_length=200)
+    art_style: str = ""
+    layout: str = ""
+    visual_direction: str = Field(default="", max_length=500)
+    color_mood: str = ""
+    context: str = Field(default="", max_length=500)
+
+
+@app.post("/api/studio/variations")
+async def studio_variations(req: VariationRequest):
+    """Generate 3 deliberately distinct visual directions for a sticker concept."""
+    from agents.variation_agent import generate_variations
+
+    try:
+        result = await _run_in_thread(
+            generate_variations,
+            req.sticker_text,
+            art_style=req.art_style,
+            layout=req.layout,
+            visual_direction=req.visual_direction,
+            color_mood=req.color_mood,
+            context=req.context,
+        )
+        return {"status": "ok", "variations": [v.model_dump() for v in result.variations]}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
 @app.post("/api/studio/generate-image")
 async def studio_generate_image(req: StudioImageRequest):
     """Generate a sticker PNG and return filename for the Studio gallery."""

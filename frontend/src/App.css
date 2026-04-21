@@ -1457,7 +1457,9 @@ body {
 /* Gallery preview */
 .gallery-preview {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1469,6 +1471,20 @@ body {
   max-height: 360px;
   object-fit: contain;
   border-radius: 8px;
+}
+
+.preview-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.preview-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  max-width: 300px;
 }
 
 /* Refine input */
