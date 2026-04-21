@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTrend } from '../context/TrendContext'
 
 const APPEAL_COLORS = { broad: '#22c55e', fandom: '#a855f7', deep_cut: '#ef4444' }
@@ -87,9 +87,16 @@ function TrendPulse({ onNavigateStudio }) {
   const [merchResult, setMerchResult] = useState(null)
   const [synthesis, setSynthesis] = useState(null)
   const [selectedIdeas, setSelectedIdeas] = useState(new Set())
+  const abortRef = useRef(null)
 
   const handleSearch = async () => {
-    if (!searchTopic.trim() || analyzing) return
+    if (!searchTopic.trim()) return
+
+    // Abort any in-flight request
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setAnalyzing(true)
     setMerchResult(null)
     setSynthesis(null)
@@ -116,6 +123,7 @@ function TrendPulse({ onNavigateStudio }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: searchTopic }),
+        signal: controller.signal,
       })
       clearInterval(interval)
 
@@ -136,9 +144,10 @@ function TrendPulse({ onNavigateStudio }) {
       }
     } catch (err) {
       clearInterval(interval)
+      if (err.name === 'AbortError') return  // new search started, ignore
       setProgressMsg(`Error: ${err.message}`)
     } finally {
-      setAnalyzing(false)
+      if (!controller.signal.aborted) setAnalyzing(false)
     }
   }
 

@@ -22,7 +22,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
 
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=8)
 
 
 async def _run_in_thread(fn, *args, **kwargs):
