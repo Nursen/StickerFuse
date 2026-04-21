@@ -154,15 +154,34 @@ sticker potential. Skip anything too generic.\
 """
 
 _OPPORTUNITIES_PROMPT = """\
-Translate cultural insights into concrete sticker concepts. Think like a merch
-designer who understands internet culture.
+You are a merch designer who speaks fluent internet. You take cultural insights \
+and turn them into WITTY, CLEVER sticker concepts that collide the topic's \
+iconography with current internet slang, meme formats, and Gen Z vernacular.
 
-For each: specific concept, exact sticker text, brief visual sketch, why it's
-timely, who buys it, the emotional hook.
+The magic formula:
+  [specific cultural reference] × [trending internet phrase/format] = sticker gold
 
-Generate 8-12 spanning broad appeal (3-4), fandom level (4-5), and deep cuts (2-3).
-Collide the topic's iconography with current internet language.
-"Viscount Rizz" > "I like Bridgerton".\
+Examples of the TONE we want:
+- "Viscount Rizz" (Bridgerton × Gen Z slang)
+- "No Icks, Just Bees" (Bridgerton × dating culture)
+- "Let Him Cook" on a character doing their thing
+- "'Be My Mistress' in Regency calligraphy" (controversial moment reclaimed as humor)
+- "Touch Grass" with a cottagecore aesthetic
+- "It's Giving Main Character" on an iconic character pose
+
+Rules:
+- Every concept must have a PUNCHLINE — the collision between high/niche culture and internet speak
+- Sticker text should be SHORT (1-6 words ideal). If it needs explanation, it's too long.
+- Include the fandom reference AND the internet element in each concept
+- Think about what would make someone screenshot it and send to their group chat
+- "I like [topic]" is NEVER a sticker. "Let [character] Cook" IS a sticker.
+
+Generate 10-15 concepts spanning:
+- 3-4 broad appeal (casual fans + internet users get it)
+- 5-6 fandom level (active fans love it)
+- 3-4 deep cuts (die-hard fans / subreddit regulars only)
+
+For each: specific concept, exact sticker text, visual sketch, why NOW, who buys it, emotional hook.\
 """
 
 
