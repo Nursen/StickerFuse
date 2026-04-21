@@ -588,6 +588,63 @@ async def analyze_trends_direct(req: AnalyzeRequest):
 
 
 # ---------------------------------------------------------------------------
+# Marketing Kit endpoints
+# ---------------------------------------------------------------------------
+
+
+class CommentDraftRequest(BaseModel):
+    sticker_text: str = Field(..., min_length=1, max_length=200)
+    sticker_url: str = ""
+    thread_url: str = ""
+    thread_content: str = Field(..., min_length=1, max_length=10000)
+    platform: str = "reddit"
+
+
+class ListingRequest(BaseModel):
+    sticker_concept: str = Field(..., min_length=1, max_length=500)
+    fandom: str = ""
+    art_style: str = ""
+    platform: str = "redbubble"
+
+
+@app.post("/api/marketing/draft-comment")
+async def draft_comment(req: CommentDraftRequest):
+    """Draft authentic comments that naturally mention a sticker in a thread."""
+    from agents.comment_drafter import draft_comments
+    try:
+        result = await _run_in_thread(
+            draft_comments,
+            req.sticker_text.strip(),
+            req.sticker_url.strip(),
+            req.thread_content.strip(),
+            req.platform,
+        )
+        data = result.model_dump()
+        if req.thread_url:
+            data["thread_url"] = req.thread_url
+        return {"status": "ok", "data": data}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/marketing/generate-listing")
+async def generate_listing(req: ListingRequest):
+    """Generate SEO-optimized product listings for a sticker concept."""
+    from agents.listing_generator import generate_listings
+    try:
+        result = await _run_in_thread(
+            generate_listings,
+            req.sticker_concept.strip(),
+            fandom=req.fandom,
+            art_style=req.art_style,
+            target_platform=req.platform,
+        )
+        return {"status": "ok", "data": result.model_dump()}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # Remix endpoint — cross an insight with different internet culture
 # ---------------------------------------------------------------------------
 
