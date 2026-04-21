@@ -588,6 +588,33 @@ async def analyze_trends_direct(req: AnalyzeRequest):
 
 
 # ---------------------------------------------------------------------------
+# Research agent endpoint — full cultural intelligence pipeline
+# ---------------------------------------------------------------------------
+
+
+class ResearchRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    max_entities: int = Field(default=6, ge=1, le=12)
+
+
+@app.post("/api/research")
+async def research_topic(req: ResearchRequest):
+    """Run the 4-step research pipeline: universe → evidence → insights → opportunities."""
+    try:
+        from agents.research_agent import run_research
+        report = await _run_in_thread(
+            run_research, req.topic.strip(), max_entities=req.max_entities,
+            timeout=300,
+        )
+        return {
+            "status": "ok",
+            "report": report.model_dump(),
+        }
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # Merch ideation endpoint — fandom × internet culture collision
 # ---------------------------------------------------------------------------
 
