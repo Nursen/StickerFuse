@@ -220,17 +220,35 @@ function TrendPulse({ onNavigateStudio }) {
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
       const data = await res.json()
 
-      if (data.report && data.report.trends) {
+      if (data.status === 'error' && data.error) {
+        setProgressMsg(`Analysis failed: ${data.error}`)
+      } else if (data.report && Array.isArray(data.report.trends)) {
         setTrends(data.report.trends)
-        const errCount = (data.progress?.errors || []).length
-        setProgressMsg(
-          `Found ${data.report.trends.length} trends from ${data.report.total_posts_analyzed || 0} posts` +
-          (errCount > 0 ? ` (${errCount} source${errCount > 1 ? 's' : ''} had issues)` : '')
-        )
+        const sourceErrors = Array.isArray(data.progress?.errors) ? data.progress.errors : []
+        const errCount = sourceErrors.length
+        const n = data.report.trends.length
+
+        const formatSourceIssues = () =>
+          errCount > 0
+            ? `\n\nSource issues (${errCount}):\n${sourceErrors.map((e) => `• ${e}`).join('\n')}`
+            : ''
+
+        if (n === 0) {
+          setProgressMsg(
+            `No ranked trends returned for “${searchTopic.trim()}”. ` +
+              `Try a broader topic, or check API keys / network for the sources below.` +
+              formatSourceIssues()
+          )
+        } else {
+          setProgressMsg(
+            `Found ${n} trends from ${data.report.total_posts_analyzed || 0} posts.` +
+              formatSourceIssues()
+          )
+        }
       } else if (data.error) {
         setProgressMsg(`Analysis failed: ${data.error}`)
       } else {
-        setProgressMsg('No trends found. Try a broader topic.')
+        setProgressMsg('Unexpected response from server. Try again or check the backend logs.')
       }
     } catch (err) {
       clearInterval(interval)
@@ -292,7 +310,12 @@ function TrendPulse({ onNavigateStudio }) {
           placeholder="Enter a topic to analyze (e.g. 'cats', 'AI memes', 'Minecraft')..."
           value={searchTopic}
           onChange={e => setSearchTopic(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAnalyze()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleAnalyze()
+            }
+          }}
           disabled={analyzing}
         />
         <button
@@ -306,6 +329,11 @@ function TrendPulse({ onNavigateStudio }) {
 
       {trends.length === 0 && !analyzing && (
         <div className="trend-empty">
+          {progressMsg && (
+            <div className={`trend-feedback ${progressMsg.startsWith('Error:') || progressMsg.startsWith('Analysis failed') ? 'trend-feedback-error' : ''}`}>
+              {progressMsg}
+            </div>
+          )}
           <div className="trend-empty-icon">&#128200;</div>
           <h2>Trend Pulse</h2>
           <p>Search for a topic or see what's trending right now across the internet.</p>
