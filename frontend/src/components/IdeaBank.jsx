@@ -354,41 +354,34 @@ export default function IdeaBank({ onGoToStudio }) {
           </div>
         )}
 
-        {/* Research Report (collapsible) */}
-        {researchReport && !analyzing && (
-          <details className="research-report-panel">
-            <summary className="research-report-toggle">
-              📋 Research Report — {researchReport.insights?.length || 0} insights,{' '}
-              {researchReport.evidence?.length || 0} entities researched
-            </summary>
-            <div className="research-report-content">
-              <p className="research-summary">{researchReport.executive_summary}</p>
-
-              {researchReport.insights?.length > 0 && (
-                <div className="research-insights">
-                  <h5>Cultural Insights</h5>
-                  {researchReport.insights.map((ins, i) => (
-                    <div key={i} className="insight-card">
-                      <div className="insight-header">
-                        <span className={`virality-badge virality-${ins.virality}`}>{ins.virality}</span>
-                        <strong>{ins.moment}</strong>
-                      </div>
-                      <p>{ins.what_happened}</p>
-                      <p className="insight-reaction">{ins.community_reaction}</p>
-                      <p className="insight-angle">🎨 {ins.sticker_angle}</p>
-                      <button
-                        className="remix-btn"
-                        onClick={() => handleRemix(ins.moment + ': ' + ins.what_happened)}
-                        disabled={remixing}
-                      >
-                        {remixing && remixSource.startsWith(ins.moment) ? '🔄 Remixing...' : '🔀 Remix This'}
-                      </button>
-                    </div>
-                  ))}
+        {/* Cultural Insights + Remix */}
+        {researchReport?.insights?.length > 0 && !analyzing && (
+          <div className="insights-section">
+            <h4 className="idea-bank-section-title">
+              Cultural Insights ({researchReport.insights.length})
+            </h4>
+            <p className="research-summary">{researchReport.executive_summary}</p>
+            <div className="insights-grid">
+              {researchReport.insights.map((ins, i) => (
+                <div key={i} className="insight-card">
+                  <div className="insight-header">
+                    <span className={`virality-badge virality-${ins.virality}`}>{ins.virality}</span>
+                    <strong>{ins.moment}</strong>
+                  </div>
+                  <p>{ins.what_happened}</p>
+                  <p className="insight-reaction">{ins.community_reaction}</p>
+                  <p className="insight-angle">🎨 {ins.sticker_angle}</p>
+                  <button
+                    className="remix-btn"
+                    onClick={() => handleRemix(ins.moment + ': ' + ins.what_happened)}
+                    disabled={remixing}
+                  >
+                    {remixing && remixSource.startsWith(ins.moment) ? '🔄 Remixing...' : '🔀 Remix This'}
+                  </button>
                 </div>
-              )}
+              ))}
             </div>
-          </details>
+          </div>
         )}
       </section>
 

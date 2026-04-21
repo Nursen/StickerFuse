@@ -154,6 +154,10 @@ class StickerOpportunity(BaseModel):
         description="Who buys this: 'Bridgerton fans who love Benedict', "
         "'water bottle collectors', 'ironic meme enjoyers'"
     )
+    estimated_appeal: Literal["broad", "fandom", "deep_cut"] = Field(
+        description="Who gets it: 'broad' = casual fans + internet users, "
+        "'fandom' = active fans, 'deep_cut' = die-hard / subreddit regulars"
+    )
     emotional_hook: str = Field(
         description="What emotion drives the purchase: 'insider identity', "
         "'ironic humor', 'nostalgia', 'outrage merch', 'wholesome fandom'"
