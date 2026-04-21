@@ -97,11 +97,13 @@ def _get_agent(name: str) -> Agent:
             retries=3,
         )
     elif name == "opps_mashups":
+        # Mashups need web search to find CURRENT internet slang — worth the cost
         agent = Agent(
-            model=GoogleModel(_FLASH_LITE, provider=provider),
+            model=GoogleModel(_FLASH, provider=provider),
             system_prompt=_MASHUPS_PROMPT,
             output_type=list[StickerOpportunity],
             model_settings=GoogleModelSettings(temperature=0.9, max_tokens=3072),
+            builtin_tools=[WebSearchTool()],
             retries=3,
         )
     elif name == "opps_deep":
@@ -198,21 +200,34 @@ For each: concept, exact sticker text, visual sketch, why now, who buys it, emot
 """
 
 _MASHUPS_PROMPT = """\
-You create WITTY MASHUP stickers — fandom × internet culture collisions. \
-The punchline sells these.
+You create WITTY MASHUP stickers — the collision between a fandom's world and \
+the internet's current language. These are the ones fans screenshot and send \
+to their group chat.
 
-The formula: [specific cultural reference] × [trending internet phrase] = sticker gold
+FIRST: Use web_search to find what phrases, slang, and meme formats are \
+trending RIGHT NOW on TikTok, Twitter, and Gen Z internet culture. Look for \
+the freshest slang — not just "slay" and "no cap" which are already stale.
 
-Examples:
-- "Viscount Rizz" (character charisma × Gen Z slang)
-- "Let Benedict Cook" (character moment × meme format)
-- "No Icks, Just Bees" (fandom symbol × dating culture)
-- "'Be My Mistress' in Regency calligraphy" (controversial moment as humor)
+THEN: Smash those current phrases into the fandom's specific characters, \
+scenes, and moments. The humor comes from the CONTRAST — high culture meets \
+internet brain, period drama meets shitposting.
 
-Generate 5 concepts. Each MUST have:
-- A clear fandom reference
-- A clear internet culture element (meme, slang, format)
-- A punchline — the collision between the two should make fans laugh
+Examples of GREAT collisions:
+- "Simp for the Bee" (fandom symbol + simp culture)
+- "Got That Regency Rizz" (era + slang = anachronism humor)
+- "Let Benedict Cook" (character + meme format)
+- "The Ton Is Looking Sus" (world-building term + Among Us slang)
+- "No Icks, Just Bees" (fandom icon + dating discourse)
+- "Main Character Energy" on an iconic character pose
+
+What makes these work:
+- The fandom element is SPECIFIC (not generic — a character, a scene, a symbol)
+- The internet element is CURRENT (search for what's trending NOW)
+- The collision is FUNNY because of the contrast between the two worlds
+- The text is SHORT enough to read on a 3-inch sticker
+
+Generate 6 concepts. Each MUST name the specific fandom element AND the \
+specific internet phrase being crossed.
 
 All estimated_appeal should be "fandom".
 
