@@ -4,15 +4,17 @@ import PackHome from './components/PackHome'
 import IdeaBank from './components/IdeaBank'
 import StickerStudio from './components/StickerStudio'
 import PackView from './components/PackView'
+import CommunityView from './components/CommunityView'
 import ChatSidebar from './components/ChatSidebar'
 
 function AppInner() {
   const { activePack, clearActivePack } = useTrend()
   const [chatOpen, setChatOpen] = useState(false)
-  const [view, setView] = useState('home') // 'home' | 'ideas' | 'studio' | 'pack-view'
+  const [view, setView] = useState('home') // 'home' | 'ideas' | 'studio' | 'pack-view' | 'community'
 
   // If no active pack and not on home, redirect to home
-  const currentView = (!activePack && view !== 'home') ? 'home' : view
+  // Community works without a pack; everything else needs one
+  const currentView = (!activePack && view !== 'home' && view !== 'community') ? 'home' : view
 
   return (
     <div className={`app-layout ${chatOpen ? 'chat-open' : ''}`}>
@@ -48,6 +50,13 @@ function AppInner() {
           </nav>
         )}
 
+        <button
+          className={`nav-tab ${currentView === 'community' ? 'active' : ''}`}
+          onClick={() => setView('community')}
+        >
+          Community <span className="tab-badge">Beta</span>
+        </button>
+
         {activePack && (
           <span className="active-pack-indicator">
             {activePack.name}
@@ -82,6 +91,9 @@ function AppInner() {
           )}
           {currentView === 'pack-view' && (
             <PackView />
+          )}
+          {currentView === 'community' && (
+            <CommunityView />
           )}
         </div>
         <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} currentView={currentView} />
