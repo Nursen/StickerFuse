@@ -588,6 +588,48 @@ async def analyze_trends_direct(req: AnalyzeRequest):
 
 
 # ---------------------------------------------------------------------------
+# Remix endpoint — cross an insight with different internet culture
+# ---------------------------------------------------------------------------
+
+
+class RemixRequest(BaseModel):
+    insight: str = Field(..., min_length=1, max_length=500)
+    topic: str = Field(default="", max_length=200)
+    vibe: str = Field(default="", max_length=100)  # "ironic", "wholesome", "unhinged"
+
+
+@app.post("/api/remix")
+async def remix_insight(req: RemixRequest):
+    """Take a cultural insight and generate 5-8 sticker concepts by crossing
+    it with different internet phrases, meme formats, and slang."""
+    from agents.research_agent import _get_agent, _retry
+
+    agent = _get_agent("opportunities")
+    prompt = (
+        f"Cultural insight / moment: \"{req.insight}\"\n"
+        f"{'Topic: ' + req.topic if req.topic else ''}\n"
+        f"{'Vibe: ' + req.vibe if req.vibe else ''}\n\n"
+        "Generate 5-8 DIFFERENT sticker concepts from this SAME insight by crossing it "
+        "with DIFFERENT internet phrases, meme formats, and slang. Each concept should "
+        "use a different internet culture reference:\n"
+        "- Try different Gen Z phrases (be so for real, no cap, the audacity, delulu, etc.)\n"
+        "- Try different meme formats (red flag, caught in 4k, let him cook, etc.)\n"
+        "- Try different tones (ironic, wholesome, unhinged, minimalist)\n"
+        "- Try different visual approaches (text-only, character + text, icon/symbol)\n\n"
+        "Same insight, completely different sticker each time."
+    )
+
+    try:
+        result = await _run_in_thread(lambda: _retry(lambda: agent.run_sync(prompt)).output)
+        return {
+            "status": "ok",
+            "remixes": [o.model_dump() for o in result],
+        }
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # Research agent endpoint — full cultural intelligence pipeline
 # ---------------------------------------------------------------------------
 

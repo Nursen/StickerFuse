@@ -22,6 +22,9 @@ export default function IdeaBank({ onGoToStudio }) {
   const [progressMsg, setProgressMsg] = useState('')
   const [addingAll, setAddingAll] = useState(false)
   const [researchReport, setResearchReport] = useState(null)
+  const [remixResults, setRemixResults] = useState(null)
+  const [remixing, setRemixing] = useState(false)
+  const [remixSource, setRemixSource] = useState('')
   const abortRef = useRef(null)
 
   const ideas = activePack?.ideas || []
@@ -163,6 +166,28 @@ export default function IdeaBank({ onGoToStudio }) {
     }
   }
 
+  const handleRemix = async (insightText) => {
+    setRemixing(true)
+    setRemixResults(null)
+    setRemixSource(insightText)
+    try {
+      const res = await fetch('http://localhost:8000/api/remix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ insight: insightText, topic: searchTopic }),
+      })
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      const data = await res.json()
+      if (data.remixes) {
+        setRemixResults(data.remixes)
+      }
+    } catch (e) {
+      console.error('Remix failed:', e)
+    } finally {
+      setRemixing(false)
+    }
+  }
+
   const handleMakeSticker = (idea) => {
     setStudioIdea(idea)
     setStickerIdeas([])
@@ -294,6 +319,41 @@ export default function IdeaBank({ onGoToStudio }) {
           </div>
         )}
 
+        {/* Remix Results */}
+        {remixResults && !remixing && (
+          <div className="remix-results">
+            <div className="brainstorm-results-header">
+              <h4>🔀 Remixes of "{remixSource.slice(0, 50)}"</h4>
+              <button className="remix-dismiss" onClick={() => setRemixResults(null)}>✕</button>
+            </div>
+            <div className="ideas-grid">
+              {remixResults.map((r, i) => {
+                const text = r.text_on_sticker || r.concept
+                const inBank = ideas.some(idea => idea.text === text)
+                return (
+                  <div key={i} className={`idea-card ${inBank ? 'idea-in-bank' : ''}`}>
+                    <span className="source-badge source-remix">Remix</span>
+                    {r.text_on_sticker && <div className="idea-sticker-text">"{r.text_on_sticker}"</div>}
+                    <p className="idea-concept">{r.concept}</p>
+                    {r.emotional_hook && <p className="idea-hook">💡 {r.emotional_hook}</p>}
+                    {inBank ? (
+                      <div className="idea-check">Already in bank</div>
+                    ) : (
+                      <button className="add-to-bank-btn" onClick={() => handleAddAiIdea(r)}>+ Add to Pack</button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {remixing && (
+          <div className="trend-loading">
+            <div className="typing"><span></span><span></span><span></span></div>
+            <p className="progress-msg">Crossing with different internet phrases...</p>
+          </div>
+        )}
+
         {/* Research Report (collapsible) */}
         {researchReport && !analyzing && (
           <details className="research-report-panel">
@@ -316,6 +376,13 @@ export default function IdeaBank({ onGoToStudio }) {
                       <p>{ins.what_happened}</p>
                       <p className="insight-reaction">{ins.community_reaction}</p>
                       <p className="insight-angle">🎨 {ins.sticker_angle}</p>
+                      <button
+                        className="remix-btn"
+                        onClick={() => handleRemix(ins.moment + ': ' + ins.what_happened)}
+                        disabled={remixing}
+                      >
+                        {remixing && remixSource.startsWith(ins.moment) ? '🔄 Remixing...' : '🔀 Remix This'}
+                      </button>
                     </div>
                   ))}
                 </div>
