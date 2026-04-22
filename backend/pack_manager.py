@@ -41,11 +41,12 @@ class PackManager:
             self._packs_collection.create_index("updated_at")
             self._mongo_enabled = True
 
-    def create_pack(self, name: str, topic: str = "") -> dict:
+    def create_pack(self, name: str, topic: str = "", user_id: str = "") -> dict:
         """Create a new empty pack."""
         pack_id = uuid.uuid4().hex[:12]
         pack = {
             "id": pack_id,
+            "user_id": user_id,  # empty until auth is added (#30)
             "name": name,
             "topic": topic,
             "ideas": [],  # list of idea dicts
