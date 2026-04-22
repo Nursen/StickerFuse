@@ -46,3 +46,6 @@ user journey draft/
 
 # Frontend build artifacts
 frontend/dist/
+
+# Presentation (internal only)
+presentation_script.md
