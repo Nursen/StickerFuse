@@ -74,6 +74,12 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
   }, [stickerText, visualDirection, selectedStyle, selectedLayout, selectedColorMood])
 
   const handleGenerate = async () => {
+    // Guard: need at least sticker text or visual direction
+    const text = stickerText.trim() || visualDirection.trim() || ideaText
+    if (!text) {
+      setNotice('Enter sticker text or a visual direction first.')
+      return
+    }
     setGenerating(true)
     setNotice('Creating 3 distinct creative directions...')
 
@@ -83,7 +89,7 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sticker_text: stickerText,
+          sticker_text: stickerText.trim() || ideaText,
           art_style: selectedStyle,
           layout: selectedLayout,
           visual_direction: visualDirection,
