@@ -3041,3 +3041,6 @@ body {
 /* Insights section (visible, not collapsible) */
 .insights-section { margin-top: 20px; }
 .insights-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+/* Insight action buttons row */
+.insight-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }

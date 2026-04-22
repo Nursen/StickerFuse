@@ -371,13 +371,29 @@ export default function IdeaBank({ onGoToStudio }) {
                   <p>{ins.what_happened}</p>
                   <p className="insight-reaction">{ins.community_reaction}</p>
                   <p className="insight-angle">🎨 {ins.sticker_angle}</p>
-                  <button
-                    className="remix-btn"
-                    onClick={() => handleRemix(ins.moment + ': ' + ins.what_happened)}
-                    disabled={remixing}
-                  >
-                    {remixing && remixSource.startsWith(ins.moment) ? '🔄 Remixing...' : '🔀 Remix This'}
-                  </button>
+                  <div className="insight-actions">
+                    <button
+                      className="add-to-bank-btn"
+                      onClick={() => handleAddAiIdea({
+                        concept: ins.sticker_angle,
+                        text_on_sticker: ins.sticker_angle,
+                        visual_sketch: ins.sticker_angle,
+                        why_now: ins.what_happened,
+                        source_insight: ins.moment,
+                        estimated_appeal: 'fandom',
+                      })}
+                      disabled={ideas.some(i => i.text === ins.sticker_angle)}
+                    >
+                      {ideas.some(i => i.text === ins.sticker_angle) ? 'In bank' : '+ Add to Bank'}
+                    </button>
+                    <button
+                      className="remix-btn"
+                      onClick={() => handleRemix(ins.moment + ': ' + ins.what_happened)}
+                      disabled={remixing}
+                    >
+                      {remixing && remixSource.startsWith(ins.moment) ? '🔄 Remixing...' : '🔀 Remix This'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
