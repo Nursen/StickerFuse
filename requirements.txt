@@ -8,3 +8,4 @@ python-multipart>=0.0.6
 playwright>=1.40.0
 vaderSentiment>=3.3.2
 tiktok-trends-mcp>=0.1.0
+pymongo>=4.0.0

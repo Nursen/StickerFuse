@@ -253,6 +253,9 @@ export default function IdeaBank({ onGoToStudio }) {
             {analyzing ? 'Brainstorming...' : 'Brainstorm with AI'}
           </button>
         </div>
+        <p className="idea-bank-hint" style={{ marginTop: '0.5rem', fontSize: '0.85rem', opacity: 0.85 }}>
+          Runs several AI and web-search steps; expect roughly 3–10 minutes. Leave this tab open until it finishes.
+        </p>
 
         {analyzing && (
           <div className="trend-loading">

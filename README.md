@@ -75,6 +75,13 @@ YOUTUBE_API_KEY=your-youtube-key     # enables video stats (free at console.clou
 TRENDSMCP_API_KEY=your-key           # 12+ platform trends (free at trendsmcp.ai)
 ```
 
+Optional MongoDB config for packs:
+```
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB_NAME=stickerfuse
+MONGODB_PACKS_COLLECTION=packs
+```
+
 > **Reddit and Google Trends require NO API keys.** Wikipedia and YouTube RSS fallback also work without keys.
 
 ### 3. Run
