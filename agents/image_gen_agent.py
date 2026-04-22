@@ -150,7 +150,7 @@ def generate_sticker_with_reference(
 
     # Build multimodal content: text + image
     contents = [
-        types.Part.from_text(full_prompt),
+        types.Part.from_text(text=full_prompt),
         types.Part.from_bytes(data=reference_image_bytes, mime_type=reference_mime),
     ]
 
