@@ -403,14 +403,29 @@ def generate_opportunities(
 # Optional: feed in our existing miners for richer evidence
 # ---------------------------------------------------------------------------
 
-def _mine_supplementary(topic: str) -> str:
-    """Run Reddit + YouTube miners for extra context. Best-effort."""
+def _mine_supplementary(topic: str, universe: UniverseMap | None = None) -> str:
+    """Run Reddit + YouTube miners using universe context. Best-effort."""
     parts = []
     try:
         from miners.reddit_miner import mine_multiple_subreddits
-        subreddit = topic.lower().replace(" ", "")
+
+        # Use universe-discovered subreddits if available
+        subreddits = []
+        if universe:
+            for hub in universe.community_hubs:
+                h = hub.strip()
+                if h.startswith("r/"):
+                    subreddits.append(h[2:])
+                elif h.startswith("/r/"):
+                    subreddits.append(h[3:])
+        # Fallback: guess from topic name
+        if not subreddits:
+            subreddits = [topic.lower().replace(" ", "")]
+        # Cap at 4 subreddits to stay within rate limits
+        subreddits = subreddits[:4]
+
         reddit = mine_multiple_subreddits(
-            [subreddit], limit=10, include_comments=True, max_comment_posts=5
+            subreddits, limit=10, include_comments=True, max_comment_posts=5
         )
         for sub in reddit.get("subreddits", []):
             for post in sub.get("posts", [])[:5]:
@@ -473,7 +488,7 @@ def run_research(
         if verbose:
             print(f"\nMining Reddit + YouTube for supplementary data...", file=sys.stderr)
         try:
-            miner_context = _mine_supplementary(topic)
+            miner_context = _mine_supplementary(topic, universe=universe)
             if verbose and miner_context:
                 lines = miner_context.count("\n") + 1
                 print(f"  {lines} supplementary data points", file=sys.stderr)
