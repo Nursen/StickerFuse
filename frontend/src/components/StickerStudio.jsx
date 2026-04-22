@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTrend } from '../context/TrendContext'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
@@ -44,6 +44,8 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
   const [generating, setGenerating] = useState(false)
   const [notice, setNotice] = useState('')
   const [savingFile, setSavingFile] = useState(null)
+  const [referenceImage, setReferenceImage] = useState(null) // {file, preview}
+  const fileInputRef = useRef(null)
 
   // Reset all state when idea changes
   useEffect(() => {
@@ -166,7 +168,61 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
     }
   }
 
+  const handleReferenceUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const preview = URL.createObjectURL(file)
+    setReferenceImage({ file, preview })
+  }
+
+  const handleRemoveReference = () => {
+    if (referenceImage?.preview) URL.revokeObjectURL(referenceImage.preview)
+    setReferenceImage(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleGenerateWithReference = async () => {
+    if (!referenceImage?.file) return handleGenerateSingle()
+    setGenerating(true)
+    setNotice('Generating sticker from your reference image...')
+    const prompt = buildPrompt()
+    const formData = new FormData()
+    formData.append('prompt', prompt)
+    formData.append('parent_topic', parentTopic)
+    formData.append('moment', stickerText || ideaText)
+    formData.append('reference', referenceImage.file)
+    try {
+      const res = await fetch(`${API_BASE}/api/studio/generate-with-reference`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data?.filename) {
+        const newVersion = {
+          filename: data.filename,
+          prompt: `[with reference] ${prompt}`,
+          label: 'From reference',
+          timestamp: new Date().toISOString(),
+        }
+        setAllVersions(prev => {
+          const next = [...prev, newVersion]
+          setSelectedVersion(next.length - 1)
+          return next
+        })
+        setNotice('Generated from reference image.')
+      } else {
+        setNotice(data?.error || 'Generation failed.')
+      }
+    } catch (err) {
+      setNotice(`Error: ${err.message}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const handleGenerateSingle = async () => {
+    // If there's a reference image, use the reference endpoint instead
+    if (referenceImage?.file) return handleGenerateWithReference()
     setGenerating(true)
     setNotice('Generating from your exact visual direction...')
     const prompt = buildPrompt()
@@ -383,6 +439,42 @@ function StickerStudio({ onGoToIdeas, onGoToPack }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Reference Image */}
+          <div className="studio-field">
+            <label>Reference Image (optional)</label>
+            {referenceImage ? (
+              <div className="reference-preview">
+                <img src={referenceImage.preview} alt="Reference" className="reference-img" />
+                <button className="reference-remove" onClick={handleRemoveReference}>✕ Remove</button>
+              </div>
+            ) : (
+              <div
+                className="reference-dropzone"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('dragover') }}
+                onDragLeave={e => e.currentTarget.classList.remove('dragover')}
+                onDrop={e => {
+                  e.preventDefault()
+                  e.currentTarget.classList.remove('dragover')
+                  const file = e.dataTransfer.files?.[0]
+                  if (file?.type.startsWith('image/')) {
+                    setReferenceImage({ file, preview: URL.createObjectURL(file) })
+                  }
+                }}
+              >
+                <span>Drop an image or click to upload</span>
+                <span className="reference-hint">Style reference, character photo, mood board, etc.</span>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleReferenceUpload}
+            />
           </div>
 
           {/* Generate Buttons */}

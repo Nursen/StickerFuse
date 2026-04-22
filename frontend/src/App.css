@@ -3047,3 +3047,28 @@ body {
 
 /* Tooltip hint icon */
 .appeal-hint { cursor: help; font-size: 0.7rem; color: var(--text-muted); margin-left: 4px; }
+
+/* Reference image upload */
+.reference-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reference-dropzone:hover, .reference-dropzone.dragover {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.05);
+}
+.reference-hint { font-size: 0.75rem; color: var(--text-muted); }
+.reference-preview { position: relative; display: inline-block; }
+.reference-img { max-width: 100%; max-height: 150px; border-radius: 8px; border: 1px solid var(--border); }
+.reference-remove {
+  position: absolute; top: 4px; right: 4px;
+  background: rgba(0,0,0,0.6); color: white; border: none;
+  border-radius: 4px; padding: 2px 6px; font-size: 0.75rem; cursor: pointer;
+}
