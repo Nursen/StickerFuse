@@ -160,6 +160,7 @@ class StickerOpportunity(BaseModel):
         "'water bottle collectors', 'ironic meme enjoyers'"
     )
     estimated_appeal: Literal["broad", "fandom", "deep_cut"] = Field(
+        default="fandom",
         description="Who gets it: 'broad' = casual fans + internet users, "
         "'fandom' = active fans, 'deep_cut' = die-hard / subreddit regulars"
     )
