@@ -444,7 +444,30 @@ def _mine_supplementary(topic: str, universe: UniverseMap | None = None) -> str:
     except Exception:
         pass
 
-    return "\n".join(parts[:40])  # cap at 40 lines
+    try:
+        from miners.tiktok_miner import mine_tiktok
+        # Use universe-discovered hashtags/search terms if available
+        tiktok_queries = [topic]
+        if universe:
+            # Add entity names as additional TikTok searches
+            for entity in universe.entities[:3]:
+                q = f"{topic} {entity}"
+                if q not in tiktok_queries:
+                    tiktok_queries.append(q)
+
+        for q in tiktok_queries[:2]:  # cap at 2 searches to keep it fast
+            tt = mine_tiktok(q, limit=10, timeout_ms=20_000)
+            for r in tt.get("results", [])[:5]:
+                views = r.get("view_count", r.get("view_count_numeric", "?"))
+                caption = r.get("caption", r.get("text", ""))[:80]
+                handle = r.get("handle", "")
+                parts.append(f"[TikTok {views} views @{handle}] {caption}")
+            if tt.get("warnings"):
+                parts.append(f"[TikTok note: {tt['warnings'][0][:80]}]")
+    except Exception as e:
+        parts.append(f"[TikTok: skipped — {str(e)[:60]}]")
+
+    return "\n".join(parts[:50])  # cap at 50 lines
 
 
 # ---------------------------------------------------------------------------
