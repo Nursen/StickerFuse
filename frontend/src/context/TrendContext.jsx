@@ -29,6 +29,9 @@ export function TrendProvider({ children }) {
   // AI brainstorm results (before adding to bank)
   const [brainstormResults, setBrainstormResults] = useState(null)
 
+  // Research report (persists across tab switches)
+  const [researchReport, setResearchReport] = useState(null)
+
   // The idea currently being designed in Studio
   const [studioIdea, setStudioIdea] = useState(null)
 
@@ -168,6 +171,8 @@ export function TrendProvider({ children }) {
     if (activePack?.id !== prevPackRef.current) {
       prevPackRef.current = activePack?.id
       setMessages([])  // clear chat on pack switch
+      setResearchReport(null)
+      setBrainstormResults(null)
     }
   }, [activePack?.id])
 
@@ -250,6 +255,7 @@ export function TrendProvider({ children }) {
     studioIdea, setStudioIdea,
     // Brainstorm
     brainstormResults, setBrainstormResults,
+    researchReport, setResearchReport,
     // Chat
     messages, setMessages,
     chatLoading,
