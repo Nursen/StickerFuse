@@ -145,7 +145,12 @@ class StickerOpportunity(BaseModel):
         description="Exact text on the sticker (None if image-only)"
     )
     visual_sketch: str = Field(
-        description="Brief visual description for the designer"
+        description="Detailed visual description for image generation. MUST include: "
+        "specific character name and their recognizable visual traits (hair color/style, "
+        "signature outfit, body language), the specific scene or moment being referenced, "
+        "composition (close-up face, full body, icon/symbol), and color palette. "
+        "NEVER say 'a gentleman' when you mean 'Anthony Bridgerton with dark curly hair "
+        "in his white boxing outfit.' NEVER say 'a character' when you can name them."
     )
     why_now: str = Field(
         description="Why this is timely: what cultural moment makes it relevant"

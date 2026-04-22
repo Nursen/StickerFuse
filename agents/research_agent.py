@@ -196,7 +196,14 @@ Typography, elegance, and emotional resonance matter most.
 
 All estimated_appeal should be "broad".
 
-For each: concept, exact sticker text, visual sketch, why now, who buys it, emotional hook.\
+VISUAL SKETCH RULES (critical):
+- Name the SPECIFIC character, not "a lady" or "a character"
+- Describe their RECOGNIZABLE traits: hair color/style, signature outfit, body language
+- Reference the SPECIFIC scene or moment if one is depicted
+- Use the fandom's actual color palette and aesthetic
+- "Anthony Bridgerton with dark curly hair, white cravat, intense stare" NOT "a Regency gentleman"
+
+For each: concept, exact sticker text, detailed visual sketch, why now, who buys it, emotional hook.\
 """
 
 _MASHUPS_PROMPT = """\
@@ -231,7 +238,13 @@ specific internet phrase being crossed.
 
 All estimated_appeal should be "fandom".
 
-For each: concept, exact sticker text, visual sketch, why now, who buys it, emotional hook.\
+VISUAL SKETCH RULES (critical):
+- Name the SPECIFIC character, not "a person" or "a figure"
+- Describe their RECOGNIZABLE traits: hair, outfit, pose from a known scene
+- If the sticker references a specific moment, describe that moment's visual
+- "Chibi Zuko with his scar, fire nation armor, brooding expression" NOT "an anime boy"
+
+For each: concept, exact sticker text, detailed visual sketch, why now, who buys it, emotional hook.\
 """
 
 _DEEP_CUTS_PROMPT = """\
@@ -250,7 +263,13 @@ immediately recognizable to anyone in the community.
 
 All estimated_appeal should be "deep_cut".
 
-For each: concept, exact sticker text, visual sketch, why now, who buys it, emotional hook.\
+VISUAL SKETCH RULES (critical):
+- Name the SPECIFIC character and their recognizable visual traits
+- Reference the EXACT scene, moment, or detail being called back
+- These should be visually recognizable to fans even without the text
+- "Sokka holding his boomerang with a cactus juice cup" NOT "a warrior with a weapon"
+
+For each: concept, exact sticker text, detailed visual sketch, why now, who buys it, emotional hook.\
 """
 
 

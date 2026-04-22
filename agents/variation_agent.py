@@ -62,8 +62,19 @@ CRITICAL RULES:
 - All 3 must be die-cut sticker designs (clean edges, simple background)
 - All 3 must reference the same cultural idea/joke
 - All 3 must work at 3-inch sticker size (readable, clear silhouette)
-- Each prompt should be 2-4 sentences, specific and detailed
-- If text appears on the sticker, specify the exact text and font style\
+- Each prompt should be 3-5 sentences, SPECIFIC and DETAILED
+- If text appears on the sticker, specify the exact text and font style
+
+CHARACTER FIDELITY (critical):
+- If a specific character is referenced, NAME them and describe their \
+  RECOGNIZABLE visual traits: hair color/style, skin tone, signature outfit, \
+  body language, distinctive features (scars, accessories, etc.)
+- Reference the SPECIFIC scene or moment if one is implied
+- Use the fandom's actual aesthetic (color palette, era, art style)
+- NEVER write "a woman" when you mean "Penelope Featherington with red curly \
+  hair in her yellow dress." NEVER write "a warrior" when you mean "Sokka with \
+  his wolf tail and boomerang."
+- The generated image should be recognizable to fans WITHOUT reading the text.\
 """
 
 
