@@ -3,6 +3,19 @@ import { useTrend } from '../context/TrendContext'
 
 const APPEAL_COLORS = { broad: '#22c55e', fandom: '#a855f7', deep_cut: '#ef4444' }
 const APPEAL_LABELS = { broad: 'Broad Appeal', fandom: 'Fandom', deep_cut: 'Deep Cut' }
+const APPEAL_HINTS = {
+  broad: 'Anyone who knows the topic would get it — casual fans, gift buyers',
+  fandom: 'Active fans will love it — you need to be "in it" to get the reference',
+  deep_cut: 'Hardcore fans only — subreddit regulars, day-one supporters',
+}
+
+const VIRALITY_HINTS = {
+  viral: 'Exploding right now — all over social media, act fast',
+  trending: 'Actively growing — people are talking about this more each day',
+  steady: 'Consistently popular — reliable seller, not a spike',
+  niche: 'Small but passionate community — hardcore fans will love it',
+  fading: 'Was hot, losing momentum — still has residual demand',
+}
 
 export default function IdeaBank({ onGoToStudio }) {
   const {
@@ -284,6 +297,7 @@ export default function IdeaBank({ onGoToStudio }) {
                       >
                         {APPEAL_LABELS[appeal] || appeal}
                       </span>
+                      {APPEAL_HINTS[appeal] && <span className="appeal-hint" title={APPEAL_HINTS[appeal]}>ⓘ</span>}
                     </div>
                     {idea.text_on_sticker && (
                       <div className="idea-sticker-text">"{idea.text_on_sticker}"</div>
@@ -365,7 +379,7 @@ export default function IdeaBank({ onGoToStudio }) {
               {researchReport.insights.map((ins, i) => (
                 <div key={i} className="insight-card">
                   <div className="insight-header">
-                    <span className={`virality-badge virality-${ins.virality}`}>{ins.virality}</span>
+                    <span className={`virality-badge virality-${ins.virality}`} title={VIRALITY_HINTS[ins.virality] || ''}>{ins.virality}</span>
                     <strong>{ins.moment}</strong>
                   </div>
                   <p>{ins.what_happened}</p>

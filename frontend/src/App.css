@@ -3044,3 +3044,6 @@ body {
 
 /* Insight action buttons row */
 .insight-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
+/* Tooltip hint icon */
+.appeal-hint { cursor: help; font-size: 0.7rem; color: var(--text-muted); margin-left: 4px; }
