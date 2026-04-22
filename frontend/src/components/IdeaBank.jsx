@@ -69,7 +69,7 @@ export default function IdeaBank({ onGoToStudio }) {
     }, 8000)
 
     try {
-      const res = await fetch('http://localhost:8000/api/research', {
+      const res = await fetch((import.meta.env.VITE_API_BASE || 'http://localhost:8000') + '/api/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: searchTopic, max_entities: 6 }),
@@ -171,7 +171,7 @@ export default function IdeaBank({ onGoToStudio }) {
     setRemixResults(null)
     setRemixSource(insightText)
     try {
-      const res = await fetch('http://localhost:8000/api/remix', {
+      const res = await fetch((import.meta.env.VITE_API_BASE || 'http://localhost:8000') + '/api/remix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ insight: insightText, topic: searchTopic }),

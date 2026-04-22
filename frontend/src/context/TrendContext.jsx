@@ -2,7 +2,7 @@ import { createContext, useState, useContext, useRef, useCallback, useEffect } f
 
 const TrendContext = createContext()
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 const CHAT_URL = `${API_BASE}/api/chat`
 
 // LocalStorage helpers — only used for activePackId now

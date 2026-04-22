@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useTrend } from '../context/TrendContext'
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 const APPEAL_COLORS = { broad: '#22c55e', fandom: '#a855f7', deep_cut: '#ef4444' }
 const APPEAL_LABELS = { broad: 'Broad Appeal', fandom: 'Fandom', deep_cut: 'Deep Cut' }
 const CATEGORY_EMOJI = {
@@ -119,7 +120,7 @@ function TrendPulse({ onNavigateStudio }) {
     }, 4000)
 
     try {
-      const res = await fetch('http://localhost:8000/api/ideate', {
+      const res = await fetch(`${API_BASE}/api/ideate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: searchTopic }),

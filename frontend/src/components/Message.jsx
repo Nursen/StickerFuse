@@ -1,6 +1,8 @@
 import ToolResult from './ToolResult'
 import SaveToLibraryButton from './SaveToLibraryButton'
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
+
 // Minimal markdown: **bold**, `code`, ```code blocks```
 function renderContent(text) {
   if (!text) return null
@@ -67,12 +69,12 @@ function Message({ message }) {
             {stickerImages.map((filename, i) => (
               <div key={i} className="sticker-preview">
                 <img
-                  src={`http://localhost:8000/stickers/${filename}`}
+                  src={`${API_BASE}/stickers/${filename}`}
                   alt="Generated sticker"
                   className="sticker-img"
                 />
                 <a
-                  href={`http://localhost:8000/stickers/${filename}`}
+                  href={`${API_BASE}/stickers/${filename}`}
                   download={filename}
                   className="download-btn"
                 >

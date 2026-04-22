@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTrend } from '../context/TrendContext'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
 const ART_STYLES = [
   { id: 'kawaii', label: 'Kawaii', emoji: '\u{1F380}' },
