@@ -11,6 +11,7 @@ export default function IdeaBank({ onGoToStudio }) {
     addIdeasBatch,
     removeIdeaFromPack,
     brainstormResults, setBrainstormResults,
+    researchReport, setResearchReport,
     setStudioIdea,
     setStickerIdeas,
     setGeneratedStickers,
@@ -21,7 +22,6 @@ export default function IdeaBank({ onGoToStudio }) {
   const [analyzing, setAnalyzing] = useState(false)
   const [progressMsg, setProgressMsg] = useState('')
   const [addingAll, setAddingAll] = useState(false)
-  const [researchReport, setResearchReport] = useState(null)
   const [remixResults, setRemixResults] = useState(null)
   const [remixing, setRemixing] = useState(false)
   const [remixSource, setRemixSource] = useState('')
@@ -385,6 +385,18 @@ export default function IdeaBank({ onGoToStudio }) {
                       disabled={ideas.some(i => i.text === ins.sticker_angle)}
                     >
                       {ideas.some(i => i.text === ins.sticker_angle) ? 'In bank' : '+ Add to Bank'}
+                    </button>
+                    <button
+                      className="make-sticker-btn-small"
+                      onClick={() => handleMakeSticker({
+                        text: ins.sticker_angle,
+                        source: 'insight',
+                        visual_description: ins.sticker_angle,
+                        why_now: ins.what_happened,
+                        source_insight: ins.moment,
+                      })}
+                    >
+                      Make Sticker →
                     </button>
                     <button
                       className="remix-btn"
