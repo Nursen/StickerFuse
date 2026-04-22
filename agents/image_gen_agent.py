@@ -116,6 +116,88 @@ def generate_sticker_image(
     return output_path
 
 
+def generate_sticker_with_reference(
+    prompt: str,
+    reference_image_bytes: bytes,
+    reference_mime: str = "image/png",
+    *,
+    output_path: Path | None = None,
+    model: str = IMAGE_MODEL,
+) -> Path:
+    """Generate a sticker image using a reference/anchor image.
+
+    Sends the reference image + text prompt to Gemini so it can use the
+    image as visual context (style reference, character reference, etc.).
+
+    Args:
+        prompt: Text prompt describing what to generate.
+        reference_image_bytes: Raw bytes of the reference image.
+        reference_mime: MIME type of the reference image.
+        output_path: Where to save the PNG.
+        model: Gemini model to use.
+
+    Returns:
+        Path to the saved PNG file.
+    """
+    client = _get_client()
+
+    full_prompt = (
+        f"{prompt}\n\n"
+        "Use the attached image as a reference/anchor for style, character, or composition. "
+        "Generate a clean die-cut sticker design inspired by or incorporating elements from "
+        "the reference. Solid white or transparent background, strong clean edges."
+    )
+
+    # Build multimodal content: text + image
+    contents = [
+        types.Part.from_text(full_prompt),
+        types.Part.from_bytes(data=reference_image_bytes, mime_type=reference_mime),
+    ]
+
+    def _call(m: str):
+        return client.models.generate_content(
+            model=m,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            ),
+        )
+
+    try:
+        response = sync_retry_llm(lambda: _call(model))
+    except Exception as e:
+        if IMAGE_MODEL_FALLBACK and IMAGE_MODEL_FALLBACK != model and is_transient_gemini_error(e):
+            response = sync_retry_llm(lambda: _call(IMAGE_MODEL_FALLBACK))
+        else:
+            raise
+
+    image_saved = False
+    text_response = ""
+
+    if output_path is None:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        slug = "_".join(prompt.split()[:5]).lower()
+        slug = "".join(c for c in slug if c.isalnum() or c == "_")[:50]
+        output_path = OUTPUT_DIR / f"ref_{slug}.png"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    for part in response.parts:
+        if part.text is not None:
+            text_response = part.text
+        elif part.inline_data is not None:
+            image = part.as_image()
+            image.save(str(output_path))
+            image_saved = True
+
+    if not image_saved:
+        raise RuntimeError(
+            f"No image was generated. Model response: {text_response or '(empty)'}"
+        )
+
+    return output_path
+
+
 def generate_from_design_spec(spec_json: dict, *, output_path: Path | None = None) -> Path:
     """Generate a sticker image from a DesignSpec dict.
 
