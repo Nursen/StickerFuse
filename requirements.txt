@@ -4,6 +4,7 @@ python-dotenv>=1.0.0
 pytrends>=4.9.0
 fastapi>=0.110.0
 uvicorn>=0.27.0
+python-multipart>=0.0.6
 playwright>=1.40.0
 vaderSentiment>=3.3.2
 tiktok-trends-mcp>=0.1.0

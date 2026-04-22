@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -284,6 +284,47 @@ async def studio_generate_image(req: StudioImageRequest):
                 f"moment: {req.moment or 'n/a'}"
             )
         path = await _run_in_thread(generate_sticker_image, full)
+        name = path.name
+        return {"status": "ok", "filename": name, "url": f"/stickers/{name}"}
+    except Exception as exc:
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/studio/generate-with-reference")
+async def studio_generate_with_reference(
+    prompt: str = Form(...),
+    parent_topic: str = Form(""),
+    moment: str = Form(""),
+    reference: UploadFile = File(...),
+):
+    """Generate a sticker PNG using a reference/anchor image."""
+    from agents.image_gen_agent import generate_sticker_with_reference
+
+    if not prompt.strip():
+        return JSONResponse({"status": "error", "error": "prompt is required"}, status_code=400)
+
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
+    if reference.content_type not in allowed_types:
+        return JSONResponse(
+            {"status": "error", "error": f"Unsupported image type: {reference.content_type}"},
+            status_code=400,
+        )
+
+    try:
+        image_bytes = await reference.read()
+        if len(image_bytes) > 10 * 1024 * 1024:  # 10MB cap
+            return JSONResponse({"status": "error", "error": "Image too large (max 10MB)"}, status_code=400)
+
+        full = prompt.strip()
+        if parent_topic.strip() or moment.strip():
+            full = f"{full}\n\nContext — parent topic: {parent_topic or 'n/a'}; moment: {moment or 'n/a'}"
+
+        path = await _run_in_thread(
+            generate_sticker_with_reference,
+            full,
+            image_bytes,
+            reference.content_type,
+        )
         name = path.name
         return {"status": "ok", "filename": name, "url": f"/stickers/{name}"}
     except Exception as exc:
