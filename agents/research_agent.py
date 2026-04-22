@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -310,21 +311,24 @@ def _gather_one(entity: str, topic: str) -> EntityEvidence | None:
 def gather_evidence_parallel(
     entities: list[str], topic: str, max_entities: int = 8, max_workers: int = 3
 ) -> list[EntityEvidence]:
-    """Gather evidence for each entity/moment.
+    """Gather evidence in parallel using separate threads.
 
-    Runs sequentially on purpose: ``run_research`` is already invoked from a
-    worker thread (FastAPI). Nested ThreadPoolExecutor + shared cached Agents
-    caused asyncio/event-loop errors and stuck requests when multiple threads
-    called ``run_sync`` on the same provider.
+    Each thread creates its own agent instance via _get_agent (cached per-name),
+    but run_sync calls are thread-safe as long as each Future gets its own
+    agent.run_sync call. The provider is stateless so this is safe.
     """
-    del max_workers  # kept for API compatibility
     targets = entities[:max_entities]
     results: list[EntityEvidence] = []
-    for entity in targets:
-        ev = _gather_one(entity, topic)
-        if ev:
-            results.append(ev)
-            print(f"  ✓ {entity}", file=sys.stderr)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_gather_one, e, topic): e for e in targets}
+        for future in as_completed(futures):
+            entity = futures[future]
+            ev = future.result()
+            if ev:
+                results.append(ev)
+                print(f"  ✓ {entity}", file=sys.stderr)
+
     return results
 
 
@@ -380,18 +384,22 @@ def generate_opportunities(
     universe: UniverseMap,
     insights: list[CulturalInsight],
 ) -> list[StickerOpportunity]:
-    """Run 3 focused prompts and merge results (sequential — see gather_evidence_parallel)."""
+    """Run 3 focused prompts in parallel, merge results."""
     context = json.dumps({
         "universe": universe.model_dump(),
         "insights": [i.model_dump() for i in insights],
     }, indent=2, ensure_ascii=False)
 
     tiers = ["opps_favorites", "opps_mashups", "opps_deep"]
-    all_opps: list[StickerOpportunity] = []
-    for tier in tiers:
-        results = _run_opp_tier(tier, context)
-        print(f"  ✓ {tier}: {len(results)} concepts", file=sys.stderr)
-        all_opps.extend(results)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_run_opp_tier, t, context): t for t in tiers}
+        all_opps: list[StickerOpportunity] = []
+        for future in as_completed(futures):
+            tier = futures[future]
+            results = future.result()
+            print(f"  ✓ {tier}: {len(results)} concepts", file=sys.stderr)
+            all_opps.extend(results)
 
     return all_opps
 
