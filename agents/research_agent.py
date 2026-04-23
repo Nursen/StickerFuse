@@ -450,6 +450,8 @@ def _mine_supplementary(topic: str, universe: UniverseMap | None = None) -> str:
         pass
 
     try:
+        if os.environ.get("DISABLE_TIKTOK_MINER"):
+            raise RuntimeError("TikTok miner disabled (bot detection on cloud platforms)")
         from miners.tiktok_miner import mine_tiktok
         # Use universe-discovered hashtags/search terms if available
         tiktok_queries = [topic]
