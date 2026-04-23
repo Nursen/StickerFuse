@@ -27,8 +27,8 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from utils.llm_retry import is_transient_gemini_error, sync_retry_llm
 
 # Nano Banana image gen models available on this API key
-IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
-IMAGE_MODEL_FALLBACK = os.getenv("GEMINI_IMAGE_MODEL_FALLBACK", "").strip()
+IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image-preview")
+IMAGE_MODEL_FALLBACK = os.getenv("GEMINI_IMAGE_MODEL_FALLBACK", "gemini-2.5-flash-image").strip()
 
 # Default output directory
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "outputs" / "stickers"
