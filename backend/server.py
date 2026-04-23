@@ -741,17 +741,75 @@ class ResearchRequest(BaseModel):
     max_entities: int = Field(default=6, ge=1, le=12)
 
 
+def _get_research_cache():
+    """Get the MongoDB research_cache collection, or None if Mongo isn't configured."""
+    mongo_uri = os.environ.get("MONGODB_URI", "").strip()
+    if not mongo_uri:
+        return None
+    try:
+        from pymongo import MongoClient
+        db_name = os.environ.get("MONGODB_DB_NAME", "stickerfuse").strip() or "stickerfuse"
+        client = MongoClient(mongo_uri)
+        return client[db_name]["research_cache"]
+    except Exception:
+        return None
+
+
+_RESEARCH_CACHE_TTL_SECONDS = 3600  # 1 hour
+
+
 @app.post("/api/research")
 async def research_topic(req: ResearchRequest):
-    """Run the 4-step research pipeline: universe → evidence → insights → opportunities."""
+    """Run the 4-step research pipeline: universe → evidence → insights → opportunities.
+    Caches results in MongoDB for 1 hour per topic."""
+    from datetime import datetime, timezone, timedelta
+
+    topic_key = req.topic.strip().lower()
+    cache = _get_research_cache()
+
+    # Check cache
+    if cache is not None:
+        cached = cache.find_one(
+            {"topic": topic_key},
+            {"_id": 0},
+            sort=[("created_at", -1)],
+        )
+        if cached:
+            created = cached.get("created_at", "")
+            if isinstance(created, str):
+                try:
+                    created_dt = datetime.fromisoformat(created)
+                except Exception:
+                    created_dt = None
+            else:
+                created_dt = created
+            if created_dt and (datetime.now(tz=timezone.utc) - created_dt).total_seconds() < _RESEARCH_CACHE_TTL_SECONDS:
+                return {"status": "ok", "report": cached["report"], "cached": True}
+
+    # Run fresh research
     try:
         from agents.research_agent import run_research
         report = await _run_in_thread(
             run_research, req.topic.strip(), max_entities=req.max_entities,
         )
+        report_data = report.model_dump()
+
+        # Store in cache
+        if cache is not None:
+            cache.replace_one(
+                {"topic": topic_key},
+                {
+                    "topic": topic_key,
+                    "report": report_data,
+                    "created_at": datetime.now(tz=timezone.utc).isoformat(),
+                },
+                upsert=True,
+            )
+
         return {
             "status": "ok",
-            "report": report.model_dump(),
+            "report": report_data,
+            "cached": False,
         }
     except Exception as exc:
         return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
