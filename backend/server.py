@@ -273,7 +273,7 @@ async def studio_variations(req: VariationRequest):
 @app.post("/api/studio/generate-image")
 async def studio_generate_image(req: StudioImageRequest):
     """Generate a sticker PNG and return filename for the Studio gallery."""
-    from agents.image_gen_agent import generate_sticker_image
+    from agents.image_gen_agent import generate_sticker_image, upload_to_cloudinary
 
     if not req.prompt.strip():
         return JSONResponse({"status": "error", "error": "prompt is required"}, status_code=400)
@@ -287,7 +287,8 @@ async def studio_generate_image(req: StudioImageRequest):
             )
         path = await _run_in_thread(generate_sticker_image, full)
         name = path.name
-        return {"status": "ok", "filename": name, "url": f"/stickers/{name}"}
+        cloud_url = await _run_in_thread(upload_to_cloudinary, path)
+        return {"status": "ok", "filename": name, "url": cloud_url or f"/stickers/{name}"}
     except Exception as exc:
         return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 
@@ -300,7 +301,7 @@ async def studio_generate_with_reference(
     reference: UploadFile = File(...),
 ):
     """Generate a sticker PNG using a reference/anchor image."""
-    from agents.image_gen_agent import generate_sticker_with_reference
+    from agents.image_gen_agent import generate_sticker_with_reference, upload_to_cloudinary
 
     if not prompt.strip():
         return JSONResponse({"status": "error", "error": "prompt is required"}, status_code=400)
@@ -328,7 +329,8 @@ async def studio_generate_with_reference(
             reference.content_type,
         )
         name = path.name
-        return {"status": "ok", "filename": name, "url": f"/stickers/{name}"}
+        cloud_url = await _run_in_thread(upload_to_cloudinary, path)
+        return {"status": "ok", "filename": name, "url": cloud_url or f"/stickers/{name}"}
     except Exception as exc:
         return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
 
