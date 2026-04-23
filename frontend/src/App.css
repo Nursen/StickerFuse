@@ -3072,3 +3072,14 @@ body {
   background: rgba(0,0,0,0.6); color: white; border: none;
   border-radius: 4px; padding: 2px 6px; font-size: 0.75rem; cursor: pointer;
 }
+
+/* Pack delete button */
+.pack-card { position: relative; }
+.pack-delete-btn {
+  position: absolute; top: 8px; right: 8px;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 1.2rem; cursor: pointer; opacity: 0; transition: opacity 0.2s;
+  padding: 2px 6px; border-radius: 4px;
+}
+.pack-card:hover .pack-delete-btn { opacity: 1; }
+.pack-delete-btn:hover { color: #f87171; background: rgba(248,113,113,0.1); }

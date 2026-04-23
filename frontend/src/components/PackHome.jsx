@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTrend } from '../context/TrendContext'
 
 export default function PackHome({ onPackSelected }) {
-  const { packs, fetchPacks, createPack, selectPack } = useTrend()
+  const { packs, fetchPacks, createPack, deletePack, selectPack } = useTrend()
   const [newPackName, setNewPackName] = useState('')
   const [newPackTopic, setNewPackTopic] = useState('')
   const [creating, setCreating] = useState(false)
@@ -87,6 +87,16 @@ export default function PackHome({ onPackSelected }) {
                 <span className="pack-card-stats">
                   {p.idea_count || 0} ideas &middot; {p.sticker_count || 0} stickers
                 </span>
+                <button
+                  className="pack-delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (window.confirm(`Delete "${p.name}"?`)) deletePack(p.id)
+                  }}
+                  title="Delete pack"
+                >
+                  &times;
+                </button>
               </div>
             ))}
           </div>

@@ -125,6 +125,13 @@ export function TrendProvider({ children }) {
     await refreshActivePack()
   }, [activePack?.id, refreshActivePack])
 
+  const deletePack = useCallback(async (packId) => {
+    const res = await fetch(`${API_BASE}/api/packs/${packId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`${res.status}`)
+    if (activePack?.id === packId) setActivePack(null)
+    await fetchPacks()
+  }, [activePack?.id, fetchPacks])
+
   const addStickerToPack = useCallback(async (filename, ideaRef) => {
     if (!activePack?.id) return
     const res = await fetch(`${API_BASE}/api/packs/${activePack.id}/stickers`, {
@@ -246,7 +253,7 @@ export function TrendProvider({ children }) {
 
   const value = {
     // Packs
-    packs, fetchPacks, createPack, selectPack, activePack, clearActivePack,
+    packs, fetchPacks, createPack, deletePack, selectPack, activePack, clearActivePack,
     addIdeaToPack, addIdeasBatch, removeIdeaFromPack,
     addStickerToPack, removeStickerFromPack, refreshActivePack,
     // Studio
