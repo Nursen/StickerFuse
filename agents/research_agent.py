@@ -179,20 +179,45 @@ suggest a sticker angle, rate confidence. Aim for 5-10 insights ranked by
 sticker potential. Skip anything too generic.\
 """
 
-_FAVORITES_PROMPT = """\
+_STICKER_CONSTRAINTS = """\
+WHY PEOPLE BUY STICKERS — understand this before generating:
+A sticker on a laptop or water bottle is a PUBLIC IDENTITY STATEMENT. People buy stickers to:
+- Signal "I'm part of this tribe" (fandom, community, subculture)
+- Make someone who gets the reference smile or say "oh my god where did you get that"
+- Express a personality trait or vibe they identify with
+- Decorate with something beautiful they love
+
+A sticker is NOT a tweet, a comment, an opinion, or a summary. Nobody puts a paragraph \
+on their laptop. Nobody buys a sticker that says "I thought the writing in season 3 was uneven."
+
+STICKER CONSTRAINTS — every concept must pass these tests:
+- Would this work as a 3-INCH DIE-CUT STICKER on a laptop or water bottle?
+- Can you read the text from arm's length? (Max 1-6 words. If it's a sentence, it's not a sticker.)
+- Is the visual SIMPLE ENOUGH to print small? (No busy scenes, no complex narratives)
+- Would someone PROUDLY DISPLAY this to strangers?
+- Does seeing it make a fellow fan feel a spark of recognition?
+
+REJECT these: commentary, opinions, event descriptions, sentences longer than 6 words, \
+anything that reads like a tweet or requires context to understand. \
+ACCEPT these: short punchy phrases, character portraits, icons/symbols, ship names, \
+catchphrases, visual puns, identity statements, inside-joke shorthand.\
+"""
+
+_FAVORITES_PROMPT = f"""\
 You create CLASSIC FAN FAVORITE stickers — the bestsellers. Simple, pretty, \
 immediately recognizable. These are what casual fans buy.
+
+{_STICKER_CONSTRAINTS}
 
 Generate 5 concepts. Focus on:
 - Ship names in beautiful typography ("Kanthony" in elegant Regency script)
 - Character names as identity statements ("Team Benedict", "Penelope Stan")
-- Iconic quotes in their original form ("I burn for you", "Dearest Reader")
+- Iconic quotes — SHORT ones only ("I burn for you", "Dearest Reader")
 - Clean aesthetic pieces — the recognizable symbol, logo, or icon
-- Pretty visual stickers of beloved characters or objects
+- Pretty chibi/portrait stickers of beloved characters
 
 These do NOT need puns, internet slang, or cleverness. They need to be \
-beautiful, recognizable, and say "I love this thing." \
-Typography, elegance, and emotional resonance matter most.
+beautiful, recognizable, and say "I love this thing."
 
 All estimated_appeal should be "broad".
 
@@ -200,76 +225,64 @@ VISUAL SKETCH RULES (critical):
 - Name the SPECIFIC character, not "a lady" or "a character"
 - Describe their RECOGNIZABLE traits: hair color/style, signature outfit, body language
 - Reference the SPECIFIC scene or moment if one is depicted
-- Use the fandom's actual color palette and aesthetic
 - "Anthony Bridgerton with dark curly hair, white cravat, intense stare" NOT "a Regency gentleman"
 
-For each: concept, exact sticker text, detailed visual sketch, why now, who buys it, emotional hook.\
+For each: concept, exact sticker text (1-6 words MAX), detailed visual sketch, why now, who buys it, emotional hook.\
 """
 
-_MASHUPS_PROMPT = """\
+_MASHUPS_PROMPT = f"""\
 You create WITTY MASHUP stickers — the collision between a fandom's world and \
-the internet's current language. These are the ones fans screenshot and send \
-to their group chat.
+the internet's current language. The punchline sells these.
+
+{_STICKER_CONSTRAINTS}
 
 FIRST: Use web_search to find what phrases, slang, and meme formats are \
 trending RIGHT NOW on TikTok, Twitter, and Gen Z internet culture. Look for \
 the freshest slang — not just "slay" and "no cap" which are already stale.
 
 THEN: Smash those current phrases into the fandom's specific characters, \
-scenes, and moments. The humor comes from the CONTRAST — high culture meets \
-internet brain, period drama meets shitposting.
+scenes, and moments. The humor comes from the CONTRAST.
 
-Examples of GREAT collisions across different topics:
-- TV: "Let [Character] Cook" (character doing their thing + meme format)
-- Gaming: "[Game Item] Is My Emotional Support" (item + therapy speak)
-- Brand: "No Icks, Just [Brand Icon]" (brand symbol + dating discourse)
-- Event: "[Event] Was My Roman Empire" (experience + trend)
-- Place: "[Place] Gave Me My Villain Origin Story" (shared experience + meme)
-- Subculture: "Unhinged [Subculture] Energy" (identity + energy format)
+Examples of GREAT sticker text (notice: all are 1-5 words):
+- "Viscount Rizz"
+- "Let Benedict Cook"
+- "No Icks, Just Bees"
+- "Emotional Support [Item]"
+- "Unhinged [Fandom] Energy"
+- "[Character] Stan Club"
 
-What makes these work:
-- The topic element is SPECIFIC to THIS universe (a character, a scene, an icon — not generic)
-- The internet element is CURRENT (search for what's trending NOW, not last year)
-- The collision is FUNNY because of the contrast or unexpected pairing
-- The text is SHORT enough to read on a 3-inch sticker
-
-Generate 6 concepts. Each MUST name the specific fandom element AND the \
-specific internet phrase being crossed.
+Generate 6 concepts. Each sticker text MUST be 1-6 words. \
+If you can't say it in 6 words, it's not a sticker.
 
 All estimated_appeal should be "fandom".
 
 VISUAL SKETCH RULES (critical):
-- Name the SPECIFIC character, not "a person" or "a figure"
-- Describe their RECOGNIZABLE traits: hair, outfit, pose from a known scene
-- If the sticker references a specific moment, describe that moment's visual
+- Name the SPECIFIC character with RECOGNIZABLE traits
 - "Chibi Zuko with his scar, fire nation armor, brooding expression" NOT "an anime boy"
 
-For each: concept, exact sticker text, detailed visual sketch, why now, who buys it, emotional hook.\
+For each: concept, exact sticker text (1-6 words MAX), detailed visual sketch, why now, who buys it, emotional hook.\
 """
 
-_DEEP_CUTS_PROMPT = """\
+_DEEP_CUTS_PROMPT = f"""\
 You create DEEP CUT stickers — for hardcore fans and subreddit regulars only. \
 These signal "I am DEEP in this fandom."
 
-Generate 4 concepts. Focus on:
-- Niche scene references that only dedicated fans would recognize
-- Community in-jokes from Reddit/TikTok/Twitter discourse
-- Specific character moments that sparked intense discussion
-- Callbacks to obscure but beloved details
-- The kind of thing that makes a fan point at your laptop and say "WAIT you know about THAT?!"
+{_STICKER_CONSTRAINTS}
 
-These should be obscure enough that casual fans wouldn't get them, but \
-immediately recognizable to anyone in the community.
+Generate 4 concepts. Focus on:
+- Niche scene references (a specific prop, a specific line, a specific look)
+- Community in-jokes that became catchphrases
+- Specific character moments distilled to a single image or phrase
+- The kind of thing that makes a fan point at your laptop and say "WAIT you know about THAT?!"
 
 All estimated_appeal should be "deep_cut".
 
 VISUAL SKETCH RULES (critical):
-- Name the SPECIFIC character and their recognizable visual traits
-- Reference the EXACT scene, moment, or detail being called back
-- These should be visually recognizable to fans even without the text
+- Name the SPECIFIC character with recognizable visual traits
+- Reference the EXACT scene, moment, or detail
 - "Sokka holding his boomerang with a cactus juice cup" NOT "a warrior with a weapon"
 
-For each: concept, exact sticker text, detailed visual sketch, why now, who buys it, emotional hook.\
+For each: concept, exact sticker text (1-6 words MAX), detailed visual sketch, why now, who buys it, emotional hook.\
 """
 
 
