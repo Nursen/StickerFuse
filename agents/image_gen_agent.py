@@ -33,6 +33,47 @@ IMAGE_MODEL_FALLBACK = os.getenv("GEMINI_IMAGE_MODEL_FALLBACK", "gemini-2.5-flas
 # Default output directory
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "outputs" / "stickers"
 
+# ---------------------------------------------------------------------------
+# Cloudinary upload (optional — enabled when CLOUDINARY_URL is set)
+# ---------------------------------------------------------------------------
+
+_cloudinary_configured = False
+
+def _init_cloudinary():
+    """Configure cloudinary from CLOUDINARY_URL env var. Idempotent."""
+    global _cloudinary_configured
+    if _cloudinary_configured:
+        return True
+    cloud_url = os.environ.get("CLOUDINARY_URL", "").strip()
+    if not cloud_url:
+        return False
+    try:
+        import cloudinary
+        cloudinary.config(cloudinary_url=cloud_url)
+        _cloudinary_configured = True
+        return True
+    except Exception:
+        return False
+
+
+def upload_to_cloudinary(local_path: Path) -> str | None:
+    """Upload a sticker PNG to Cloudinary. Returns the public URL or None."""
+    if not _init_cloudinary():
+        return None
+    try:
+        import cloudinary.uploader
+        result = cloudinary.uploader.upload(
+            str(local_path),
+            folder="stickerfuse/stickers",
+            public_id=local_path.stem,
+            overwrite=True,
+            resource_type="image",
+        )
+        return result.get("secure_url")
+    except Exception as e:
+        print(f"Cloudinary upload failed: {e}", file=sys.stderr)
+        return None
+
 
 def _get_client() -> genai.Client:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
